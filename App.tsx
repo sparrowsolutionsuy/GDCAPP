@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+// 1. IMPORTANTE: Cambiamos BrowserRouter por HashRouter para GitHub Pages
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Map as MapIcon, 
@@ -7,15 +9,15 @@ import {
   Menu, 
   X,
   Sparkles,
-  ChevronRight,
-  BookOpen,
-  Maximize,
-  Minimize,
   Receipt,
-  LogOut
+  LogOut,
+  Loader2
 } from 'lucide-react';
+
 import { Client, Trip, AIInsight, TripStatus, User } from './types';
+// Mantenemos los mocks solo como fallback de seguridad
 import { MOCK_CLIENTS, MOCK_TRIPS } from './constants';
+
 import { Dashboard } from './components/Dashboard';
 import { StrategicMap } from './components/StrategicMap';
 import { TripManager } from './components/TripManager';
@@ -23,6 +25,7 @@ import { ClientForm } from './components/ClientForm';
 import { ClientDirectory } from './components/ClientDirectory';
 import { BillingView } from './components/BillingView';
 import { Login } from './components/Login';
+
 import { generateLogisticsInsights } from './services/geminiService';
 import { fetchLogisticsData, saveTripToSheet, saveClientToSheet } from './services/api';
 
@@ -36,287 +39,166 @@ enum View {
 }
 
 const App: React.FC = () => {
-  // Auth State
   const [user, setUser] = useState<User | null>(null);
-  
-  // App State
   const [view, setView] = useState<View>(View.DASHBOARD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  
-  // Data State
-  const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS); 
-  const [trips, setTrips] = useState<Trip[]>(MOCK_TRIPS);
-  const [loading, setLoading] = useState(false);
-  
-  // AI State
+  const [clients, setClients] = useState<Client[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [insights, setInsights] = useState<AIInsight[]>([]);
-  const [loadingAI, setLoadingAI] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // Check LocalStorage on Mount
+  // 2. Lógica de carga de datos REALES desde Google Sheets
   useEffect(() => {
-    const storedUser = localStorage.getItem('gdc_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
+    const loadInitialData = async () => {
+      setLoading(true);
+      try {
+        const data = await fetchLogisticsData();
+        if (data) {
+          setClients(data.clients);
+          setTrips(data.trips);
+        } else {
+          // Si no hay API configurada, cargamos mocks para que no se vea vacío en desarrollo
+          console.warn("Usando datos de prueba (Mocks)");
+          setClients(MOCK_CLIENTS);
+          setTrips(MOCK_TRIPS);
+        }
+      } catch (error) {
+        console.error("Error cargando datos:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadInitialData();
   }, []);
 
-  // Load Data from Google Sheets (Only if logged in)
-  useEffect(() => {
-    if (!user) return;
-    
-    const loadData = async () => {
-      setLoading(true);
-      const data = await fetchLogisticsData();
-      if (data) {
-        setClients(data.clients);
-        setTrips(data.trips);
-      }
-      setLoading(false);
-    };
-    loadData();
-  }, [user]);
-
-  const handleLogin = (loggedInUser: User) => {
-    setUser(loggedInUser);
-    localStorage.setItem('gdc_user', JSON.stringify(loggedInUser));
-    setView(View.DASHBOARD); // Reset view on login
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('gdc_user');
-  };
-
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-
-  const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-        setIsFullscreen(false);
-      }
+  // 3. Generación de Insights con Gemini
+  const refreshInsights = async () => {
+    if (clients.length > 0 && trips.length > 0) {
+      setIsAiLoading(true);
+      const newInsights = await generateLogisticsInsights(trips, clients);
+      setInsights(newInsights);
+      setIsAiLoading(false);
     }
   };
 
-  const handleAddTrip = async (newTrip: Trip) => {
-    setTrips(prev => [newTrip, ...prev]);
-    await saveTripToSheet(newTrip);
+  useEffect(() => {
+    if (!loading && user) {
+      refreshInsights();
+    }
+  }, [loading, user]);
+
+  // Handlers de datos
+  const handleAddTrip = async (trip: Trip) => {
+    const success = await saveTripToSheet(trip);
+    if (success) {
+      setTrips(prev => [trip, ...prev]);
+      refreshInsights();
+    }
   };
 
-  const handleAddClient = async (newClient: Client) => {
-    setClients(prev => [...prev, newClient]);
-    await saveClientToSheet(newClient);
+  const handleAddClient = async (client: Client) => {
+    const success = await saveClientToSheet(client);
+    if (success) {
+      setClients(prev => [...prev, client]);
+    }
   };
 
   const handleInvoiceUploaded = (tripId: string, url: string) => {
     setTrips(prev => prev.map(t => 
-      t.id === tripId ? { ...t, estado: TripStatus.CLOSED, facturaUrl: url } : t
+      t.id === tripId ? { ...t, facturaUrl: url, estado: TripStatus.CLOSED } : t
     ));
   };
 
-  const fetchInsights = async () => {
-    setLoadingAI(true);
-    const results = await generateLogisticsInsights(trips, clients);
-    setInsights(results);
-    setLoadingAI(false);
-  };
-
-  // If not logged in, show Login Screen
-  if (!user) {
-    return <Login onLogin={handleLogin} />;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
+          <p className="text-slate-300 font-medium">Cargando sistema GDC...</p>
+        </div>
+      </div>
+    );
   }
 
-  // --- Main App Layout ---
+  if (!user) {
+    return <Login onLogin={setUser} />;
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100">
-      
-      {/* Sidebar */}
-      <aside 
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-64'} lg:relative lg:translate-x-0 flex flex-col`}
-      >
-        <div className="p-6 border-b border-slate-700 flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <Truck className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">GDC Logistics</span>
-          </div>
-          <button onClick={toggleSidebar} className="lg:hidden text-slate-400">
-            <X />
-          </button>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {/* General Access Items */}
-          <SidebarItem 
-            icon={<LayoutDashboard />} 
-            label="Dashboard" 
-            active={view === View.DASHBOARD} 
-            onClick={() => setView(View.DASHBOARD)} 
-          />
-          <SidebarItem 
-            icon={<Truck />} 
-            label="Gestión de Viajes" 
-            active={view === View.TRIPS} 
-            onClick={() => setView(View.TRIPS)} 
-          />
-          <SidebarItem 
-            icon={<MapIcon />} 
-            label="Mapa Estratégico" 
-            active={view === View.MAP} 
-            onClick={() => setView(View.MAP)} 
-          />
-          
-          {/* Admin Only Items */}
-          {user.role === 'admin' && (
-            <>
-              <div className="pt-4 pb-2">
-                <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Administración</p>
-              </div>
-              <SidebarItem 
-                icon={<Receipt />} 
-                label="Facturación" 
-                active={view === View.BILLING} 
-                onClick={() => setView(View.BILLING)} 
-              />
-              <SidebarItem 
-                icon={<BookOpen />} 
-                label="Directorio Clientes" 
-                active={view === View.DIRECTORY} 
-                onClick={() => setView(View.DIRECTORY)} 
-              />
-              <SidebarItem 
-                icon={<Users />} 
-                label="Registro Clientes" 
-                active={view === View.CLIENTS} 
-                onClick={() => setView(View.CLIENTS)} 
-              />
-            </>
-          )}
-        </nav>
-
-        {/* AI Insight Teaser */}
-        <div className="p-4 bg-slate-800 m-4 rounded-xl border border-slate-700">
-          <div className="flex items-center space-x-2 mb-2 text-blue-400">
-            <Sparkles className="w-4 h-4" />
-            <span className="text-xs font-bold uppercase tracking-wider">IA Logística</span>
-          </div>
-          <p className="text-xs text-slate-300 mb-3">
-            Optimiza tus rutas y retornos con Gemini.
-          </p>
-          <button 
-            onClick={fetchInsights}
-            disabled={loadingAI}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-xs text-white py-2 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {loadingAI ? 'Analizando...' : 'Generar Reporte'}
-          </button>
-        </div>
-
-        {/* User Profile / Logout */}
-        <div className="p-4 border-t border-slate-700 bg-slate-900">
-          <div className="flex items-center">
-            <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm">
-              {user.nombre.charAt(0)}
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-white">{user.nombre}</p>
-              <p className="text-xs text-slate-400 capitalize">{user.role}</p>
-            </div>
-            <button 
-              onClick={handleLogout}
-              className="ml-auto p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-              title="Cerrar Sesión"
-            >
-              <LogOut className="w-5 h-5" />
+    <Router>
+      <div className="min-h-screen bg-slate-50 flex">
+        {/* Sidebar */}
+        <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-slate-900 transition-all duration-300 flex flex-col z-20`}>
+          <div className="p-6 flex items-center justify-between">
+            {isSidebarOpen && <h1 className="text-white font-bold text-xl tracking-tight">GDC Logistics</h1>}
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-slate-400 hover:text-white">
+              {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>
-        </div>
-      </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto h-full flex flex-col relative">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b border-slate-200 p-4 lg:p-6 flex justify-between items-center sticky top-0 z-40">
-          <div className="flex items-center">
-            <button onClick={toggleSidebar} className="lg:hidden mr-4 text-slate-600">
-              <Menu />
-            </button>
-            <h1 className="text-2xl font-bold text-slate-800">{view}</h1>
-            {loading && <span className="ml-4 text-sm text-blue-600 animate-pulse">Sincronizando con Google Sheets...</span>}
-          </div>
-          <div className="flex items-center space-x-4">
-             <button 
-                onClick={toggleFullScreen} 
-                className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors hidden md:block"
-                title="Pantalla Completa"
-             >
-                {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-             </button>
-          </div>
-        </header>
-
-        {/* AI Insights Panel */}
-        {insights.length > 0 && (
-          <div className="bg-indigo-50 border-b border-indigo-100 p-4 animate-fade-in">
-            <div className="max-w-7xl mx-auto">
-              <div className="flex items-center mb-3">
-                <Sparkles className="w-5 h-5 text-indigo-600 mr-2" />
-                <h3 className="font-bold text-indigo-900">Sugerencias de Optimización (Gemini)</h3>
-                <button onClick={() => setInsights([])} className="ml-auto text-indigo-400 hover:text-indigo-600">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {insights.map((insight, idx) => (
-                  <div key={idx} className="bg-white p-3 rounded-lg shadow-sm border border-indigo-100 text-sm">
-                    <p className="font-bold text-slate-800 mb-1">{insight.title}</p>
-                    <p className="text-slate-600">{insight.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* View Content */}
-        <div className="p-4 lg:p-6 flex-1">
-          <div className="w-full">
-            {view === View.DASHBOARD && <Dashboard trips={trips} clients={clients} user={user} />}
-            {view === View.TRIPS && <TripManager trips={trips} clients={clients} onAddTrip={handleAddTrip} user={user} />}
-            {/* Security Check for Admin-Only Views */}
-            {view === View.BILLING && user.role === 'admin' && <BillingView trips={trips} clients={clients} onInvoiceUploaded={handleInvoiceUploaded} />}
-            {view === View.DIRECTORY && user.role === 'admin' && <ClientDirectory clients={clients} trips={trips} />}
-            {view === View.MAP && <StrategicMap clients={clients} trips={trips} />}
-            {view === View.CLIENTS && user.role === 'admin' && <ClientForm onAddClient={handleAddClient} />}
+          <nav className="flex-1 px-4 space-y-2">
+            <SidebarItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={view === View.DASHBOARD} onClick={() => setView(View.DASHBOARD)} collapsed={!isSidebarOpen} />
+            <SidebarItem icon={<Truck size={20} />} label="Gestión Viajes" active={view === View.TRIPS} onClick={() => setView(View.TRIPS)} collapsed={!isSidebarOpen} />
+            <SidebarItem icon={<MapIcon size={20} />} label="Mapa Estratégico" active={view === View.MAP} onClick={() => setView(View.MAP)} collapsed={!isSidebarOpen} />
             
-            {/* Fallback for unauthorized access via state manipulation */}
-            {['Facturación', 'Directorio Clientes', 'Registro Clientes'].includes(view) && user.role !== 'admin' && (
-              <div className="flex flex-col items-center justify-center h-96 text-slate-400">
-                <p>No tiene permisos para ver esta sección.</p>
-              </div>
+            {user.role === 'admin' && (
+              <>
+                <div className={`pt-4 pb-2 ${isSidebarOpen ? 'px-3' : 'text-center'}`}>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{isSidebarOpen ? 'Administración' : 'Adm'}</p>
+                </div>
+                <SidebarItem icon={<Receipt size={20} />} label="Facturación" active={view === View.BILLING} onClick={() => setView(View.BILLING)} collapsed={!isSidebarOpen} />
+                <SidebarItem icon={<Users size={20} />} label="Clientes" active={view === View.DIRECTORY} onClick={() => setView(View.DIRECTORY)} collapsed={!isSidebarOpen} />
+                <SidebarItem icon={<Users size={20} />} label="Nuevo Cliente" active={view === View.CLIENTS} onClick={() => setView(View.CLIENTS)} collapsed={!isSidebarOpen} />
+              </>
             )}
+          </nav>
+
+          <div className="p-4 border-t border-slate-800">
+            <button onClick={() => setUser(null)} className="flex items-center w-full p-3 text-slate-400 hover:text-red-400 transition-colors">
+              <LogOut size={20} />
+              {isSidebarOpen && <span className="ml-3 font-medium">Cerrar Sesión</span>}
+            </button>
           </div>
-        </div>
-      </main>
-    </div>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-8">
+            <h2 className="text-slate-800 font-semibold text-lg">{view}</h2>
+            <div className="flex items-center space-x-4">
+              {isAiLoading && <div className="flex items-center text-xs text-blue-600 animate-pulse"><Sparkles className="w-3 h-3 mr-1" /> Analizando...</div>}
+              <div className="text-right">
+                <p className="text-sm font-bold text-slate-900">{user.nombre}</p>
+                <p className="text-xs text-slate-500 capitalize">{user.role}</p>
+              </div>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto p-8">
+            <div className="max-w-7xl mx-auto">
+              {view === View.DASHBOARD && <Dashboard trips={trips} clients={clients} user={user} />}
+              {view === View.TRIPS && <TripManager trips={trips} clients={clients} onAddTrip={handleAddTrip} user={user} />}
+              {view === View.BILLING && user.role === 'admin' && <BillingView trips={trips} clients={clients} onInvoiceUploaded={handleInvoiceUploaded} />}
+              {view === View.DIRECTORY && user.role === 'admin' && <ClientDirectory clients={clients} trips={trips} />}
+              {view === View.MAP && <StrategicMap clients={clients} trips={trips} />}
+              {view === View.CLIENTS && user.role === 'admin' && <ClientForm onAddClient={handleAddClient} />}
+            </div>
+          </div>
+        </main>
+      </div>
+    </Router>
   );
 };
 
-const SidebarItem = ({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) => (
+// Componente auxiliar para los items del menú
+const SidebarItem = ({ icon, label, active, onClick, collapsed }: any) => (
   <button 
     onClick={onClick}
-    className={`flex items-center w-full p-3 rounded-lg transition-all duration-200 group ${active ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+    className={`flex items-center w-full p-3 rounded-lg transition-all ${active ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
   >
-    <div className={`${active ? 'text-white' : 'text-slate-400 group-hover:text-white'} mr-3`}>
-      {icon}
-    </div>
-    <span className="font-medium text-sm">{label}</span>
-    {active && <ChevronRight className="w-4 h-4 ml-auto" />}
+    <div className="flex-shrink-0">{icon}</div>
+    {!collapsed && <span className="ml-3 font-medium">{label}</span>}
   </button>
 );
 
