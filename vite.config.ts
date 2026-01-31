@@ -4,15 +4,16 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/GDCAPP/', // Base para GitHub Pages
+  base: '/GDCAPP/',
   resolve: {
     alias: {
-      // El alias @ ahora apunta a la raíz del proyecto
-      '@': path.resolve(__dirname, './'),
+      '@': path.resolve(__dirname, './src'),
     },
   },
   build: {
     outDir: 'dist',
-    assetsDir: 'assets',
-  }
+    rollupOptions: {
+      input: path.resolve(__dirname, 'index.html'),
+    },
+  },
 });
