@@ -4,7 +4,7 @@ import { Client, Trip, TripStatus, User } from '../types';
 const API_URL = 'INSERT_YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
 
 export const fetchLogisticsData = async () => {
-  if (API_URL === 'INSERT_YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+  if (API_URL === 'https://script.google.com/macros/s/AKfycbzyHGmjxKLdhufG0TPCITPL1Lxkf6jM3F43NyM5SFnUfhPAUH-S9_-G8Hg-1IeVZ7d_/exec') {
     console.warn("API URL not configured. Using Mock Data.");
     return null;
   }
