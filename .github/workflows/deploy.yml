@@ -15,7 +15,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          # Eliminamos la línea de cache para que no busque el package-lock.json
       - name: Install and Build
         run: |
           npm install
