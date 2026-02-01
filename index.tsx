@@ -4,7 +4,7 @@ import { HashRouter } from 'react-router-dom';
 import App from './src/App'; 
 
 const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error("No se encontró el elemento root");
+if (!rootElement) throw new Error("No se pudo encontrar el elemento root");
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(
