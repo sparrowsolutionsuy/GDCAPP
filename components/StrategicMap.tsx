@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { Icon } from 'leaflet';
-import { Client, Trip } from '../types';
-import { DEPARTAMENTOS, MAP_CENTER, MAP_ZOOM } from '../constants';
+import { Client, Trip } from '../src/types';
+import { DEPARTAMENTOS, MAP_CENTER, MAP_ZOOM } from '../src/constants';
 import { Filter, MapPin, Truck, Mail, Phone, User } from 'lucide-react';
 
 // Fix for default Leaflet marker icons in React
