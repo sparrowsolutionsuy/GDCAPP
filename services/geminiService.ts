@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"; // Cambio en la importación
-import { Client, Trip, AIInsight } from "../types";
-import { BASE_GDC } from "../constants";
+import { Client, Trip, AIInsight } from "../src/types";
+import { BASE_GDC } from "../src/constants";
 
 export const generateLogisticsInsights = async (
   trips: Trip[],
