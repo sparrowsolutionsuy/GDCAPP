@@ -3,8 +3,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   AreaChart, Area
 } from 'recharts';
-import { Trip, TripStatus, Client, User } from '../types';
-import { DEPARTAMENTOS } from '../constants';
+import { Trip, TripStatus, Client, User } from '../src/types';
+import { DEPARTAMENTOS } from '../src/constants';
 import { DollarSign, Truck, TrendingUp, Filter, Calendar, Map, Clock, Package, Lock } from 'lucide-react';
 
 interface DashboardProps {
