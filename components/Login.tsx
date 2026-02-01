@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { loginUser } from '../services/api';
-import { User } from '../types';
+import { loginUser } from '../src/services/api';
+import { User } from '../src/types';
 import { Truck, Lock, User as UserIcon, Loader2, AlertCircle } from 'lucide-react';
 
 interface LoginProps {
