@@ -7,7 +7,6 @@ export default defineConfig({
   base: '/GDCAPP/',
   resolve: {
     alias: {
-      // El alias @ ahora apunta a src para que tus imports funcionen
       '@': path.resolve(__dirname, './src'),
     },
   },
