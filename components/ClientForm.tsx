@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Client } from '../types';
-import { DEPARTAMENTOS } from '../constants';
+import { Client } from '../src/types';
+import { DEPARTAMENTOS } from '../src/constants';
 import { Save, User, MapPin, Hash, Mail, Phone } from 'lucide-react';
 
 interface ClientFormProps {
