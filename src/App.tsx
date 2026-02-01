@@ -55,13 +55,10 @@ const App: React.FC = () => {
   }, [user]);
 
   // Pantalla de Login
-  if (!user) {
-    return <Login onLogin={async (u, p) => {
-      const loggedUser = await loginUser(u, p);
-      if (loggedUser) setUser(loggedUser);
-      else alert("Credenciales incorrectas");
-    }} />;
-  }
+if (!user) {
+  return <Login onLogin={(userObject) => setUser(userObject)} />;
+}
+
 
   // Pantalla de Carga
   if (loading) {
