@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Client, Trip } from '../types';
+import { Client, Trip } from '../src/types';
 import { Search, MapPin, Phone, ArrowRight, TrendingUp, Mail, Hash } from 'lucide-react';
 
 interface ClientDirectoryProps {
