@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Trip, TripStatus, Client, User } from '../types';
-import { updateTripInSheet, deleteTripInSheet } from '../services/api';
+import { Trip, TripStatus, Client, User } from '../src/types';
+import { updateTripInSheet, deleteTripInSheet } from '../src/services/api';
 import { Plus, Calendar, Package, ArrowRight, DollarSign, Search, Filter, Sparkles, Pencil, Trash2, X } from 'lucide-react';
 
 interface TripManagerProps {
