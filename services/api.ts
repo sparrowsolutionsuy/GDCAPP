@@ -1,4 +1,4 @@
-import { Client, Trip, TripStatus, User } from '../types';
+import { Client, Trip, TripStatus, User } from '../src/types';
 
 // TODO: Replace this URL with your deployed Google Apps Script Web App URL
 const API_URL = 'https://script.google.com/macros/s/AKfycbzyHGmjxKLdhufG0TPCITPL1Lxkf6jM3F43NyM5SFnUfhPAUH-S9_-G8Hg-1IeVZ7d_/exec';
