@@ -1,19 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/GDCAPP/',
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
+  // Asegúrate de que esto coincida con el nombre de tu repositorio en GitHub
+  base: '/GDCAPP/', 
   build: {
     outDir: 'dist',
-    rollupOptions: {
-      input: path.resolve(__dirname, 'index.html'),
-    },
-  },
+  }
 });
