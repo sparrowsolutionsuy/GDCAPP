@@ -4,7 +4,7 @@ import { Client, Trip, TripStatus, User } from '../src/types';
 const API_URL = 'https://script.google.com/macros/s/AKfycbzyHGmjxKLdhufG0TPCITPL1Lxkf6jM3F43NyM5SFnUfhPAUH-S9_-G8Hg-1IeVZ7d_/exec';
 
 // Verificamos si la URL sigue siendo la de ejemplo o está vacía
-const IS_MOCK = !API_URL || API_URL.includes('INSERT_YOUR_URL');
+const IS_MOCK = false;
 
 /**
  * Obtiene todos los datos de logística (Viajes y Clientes)
