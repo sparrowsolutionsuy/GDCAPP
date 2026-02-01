@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trip, TripStatus, Client } from '..src/types';
+import { Trip, TripStatus, Client } from '../src/types';
 import { uploadInvoice } from '../services/api';
 import { UploadCloud, CheckCircle, Loader2, ExternalLink, Calendar, Search, Filter, X } from 'lucide-react';
 
