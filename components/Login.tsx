@@ -109,7 +109,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           
           <div className="mt-6 text-center">
             <p className="text-xs text-slate-400">
-              © 2024 GDC Logistics. Acceso restringido.
+              © 2026 GDC SAS. Acceso restringido.
             </p>
           </div>
         </div>
