@@ -9,13 +9,16 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # AQUÍ AGREGAMOS EL ENTORNO
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          # Eliminamos la línea de cache para que no busque el package-lock.json
       - name: Install and Build
         run: |
           npm install
