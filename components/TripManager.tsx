@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Trip, TripStatus, Client, User } from '../src/types';
 import { saveTripToSheet, updateTripInSheet, deleteTripInSheet } from '../services/api';
-import { Plus, Calendar, Package, ArrowRight, DollarSign, Search, Filter, Sparkles, Pencil, Trash2, X, RefreshCw, Save } from 'lucide-react';
+import { 
+  Plus, Calendar, Package, ArrowRight, DollarSign, Search, Filter, 
+  Sparkles, Pencil, Trash2, X, RefreshCw, Save, Truck, MapPin 
+} from 'lucide-react';
 
 interface TripManagerProps {
   trips: Trip[];
   clients: Client[];
-  onAddTrip: (trip: Trip) => void;
+  onAddTrip: (trip: Trip) => void; // Mantenemos la prop por compatibilidad, aunque recargaremos
   user: User;
 }
 
@@ -17,7 +20,16 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, user }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Form State con todos los campos originales
+  // Estados para filtros avanzados
+  const [filters, setFilters] = useState({
+    searchId: '',
+    startDate: '',
+    endDate: '',
+    clientId: '',
+    status: ''
+  });
+
+  // Estado del Formulario
   const [newTrip, setNewTrip] = useState<Partial<Trip>>({
     estado: TripStatus.PROGRAMMED,
     fecha: new Date().toISOString().split('T')[0],
@@ -29,17 +41,28 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, user }
     tarifa: 0
   });
 
-  // Lógica de distancia inteligente (de tu código original)
+  // Lógica de "Distancia Inteligente" (Original tuya)
   useEffect(() => {
     if (!editingId && newTrip.origen && newTrip.destino && showForm) {
       const isMontevideo = newTrip.origen.toLowerCase().includes('montevideo');
+      const dest = newTrip.destino.toLowerCase();
+      
       if (isMontevideo) {
-        if (newTrip.destino.toLowerCase().includes('artigas')) setNewTrip(prev => ({ ...prev, kmRecorridos: 600 }));
-        else if (newTrip.destino.toLowerCase().includes('rivera')) setNewTrip(prev => ({ ...prev, kmRecorridos: 500 }));
-        else if (newTrip.destino.toLowerCase().includes('salto')) setNewTrip(prev => ({ ...prev, kmRecorridos: 490 }));
+        if (dest.includes('artigas')) setNewTrip(prev => ({ ...prev, kmRecorridos: 600 }));
+        else if (dest.includes('rivera')) setNewTrip(prev => ({ ...prev, kmRecorridos: 500 }));
+        else if (dest.includes('salto')) setNewTrip(prev => ({ ...prev, kmRecorridos: 490 }));
+        else if (dest.includes('paysandu') || dest.includes('paysandú')) setNewTrip(prev => ({ ...prev, kmRecorridos: 380 }));
       }
     }
-  }, [newTrip.destino, showForm]);
+  }, [newTrip.destino, newTrip.origen, showForm, editingId]);
+
+  // Cálculo de Beneficio (Visualización)
+  const calculateBenefit = (trip: Trip) => {
+    const revenue = trip.tarifa * (trip.pesoKg / 1000);
+    return revenue.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  };
+
+  // --- LÓGICA DE ACCIONES (API) ---
 
   const handleEdit = (trip: Trip) => {
     setNewTrip(trip);
@@ -47,32 +70,22 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, user }
     setShowForm(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    
-    const tripData = {
-      ...newTrip,
-      id: editingId || `V${Date.now()}`,
-      pesoKg: Number(newTrip.pesoKg),
-      kmRecorridos: Number(newTrip.kmRecorridos),
-      tarifa: Number(newTrip.tarifa)
-    } as Trip;
-
-    const success = editingId ? await updateTripInSheet(tripData) : await saveTripToSheet(tripData);
-    
-    if (success) {
-      window.location.reload();
-    } else {
-      alert("Error al guardar en base de datos.");
-      setLoading(false);
+  const handleDelete = async (id: string) => {
+    if (confirm('¿Estás seguro de que deseas eliminar este viaje permanentemente?')) {
+      setLoading(true);
+      const success = await deleteTripInSheet(id);
+      if (success) window.location.reload();
+      else { alert("Error al eliminar"); setLoading(false); }
     }
   };
 
   const handleStatusUpdate = async (trip: Trip) => {
+    if (!isAdmin) return;
+    
     let nextStatus = trip.estado;
     if (trip.estado === TripStatus.PROGRAMMED) nextStatus = TripStatus.IN_PROGRESS;
     else if (trip.estado === TripStatus.IN_PROGRESS) nextStatus = TripStatus.COMPLETED;
+    else if (trip.estado === TripStatus.COMPLETED) nextStatus = TripStatus.CLOSED;
     
     if (nextStatus !== trip.estado) {
       setLoading(true);
@@ -81,125 +94,346 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, user }
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const tripData = {
+      ...newTrip,
+      // Aseguramos que los números sean números
+      pesoKg: Number(newTrip.pesoKg),
+      kmRecorridos: Number(newTrip.kmRecorridos),
+      tarifa: Number(newTrip.tarifa),
+      // Si no tiene ID (es nuevo), generamos uno basado en fecha
+      id: editingId || `V${Date.now()}`
+    } as Trip;
+
+    let success;
+    if (editingId) {
+      success = await updateTripInSheet(tripData);
+    } else {
+      success = await saveTripToSheet(tripData);
+    }
+
+    if (success) {
+      setShowForm(false);
+      window.location.reload();
+    } else {
+      alert("Error al guardar en Google Sheets. Revise su conexión.");
+      setLoading(false);
+    }
+  };
+
+  // --- FILTRADO DE DATOS ---
+
   const filteredTrips = trips.filter(t => {
-    if (activeTab === 'current') return t.estado === TripStatus.IN_PROGRESS;
-    if (activeTab === 'programmed') return t.estado === TripStatus.PROGRAMMED;
+    // 1. Filtro por Tab (Pestaña)
+    if (activeTab === 'current' && t.estado !== TripStatus.IN_PROGRESS) return false;
+    if (activeTab === 'programmed' && t.estado !== TripStatus.PROGRAMMED) return false;
+
+    // 2. Filtros Avanzados (Inputs)
+    if (filters.searchId && !t.id.toLowerCase().includes(filters.searchId.toLowerCase())) return false;
+    if (filters.startDate && t.fecha < filters.startDate) return false;
+    if (filters.endDate && t.fecha > filters.endDate) return false;
+    if (filters.clientId && t.clientId !== filters.clientId) return false;
+    if (filters.status && t.estado !== filters.status) return false;
+
     return true;
   });
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      {/* Header & Main Controls */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Operaciones de Flota</h2>
-          <p className="text-slate-500 text-sm">Monitoreo de viajes activos y programados</p>
+          <h2 className="text-2xl font-bold text-slate-800 flex items-center">
+            <Truck className="mr-2 text-blue-600" /> Operaciones de Flota
+          </h2>
+          <p className="text-slate-500 text-sm mt-1">Gestión y monitoreo de cargas activas</p>
         </div>
         
-        <div className="flex bg-white p-1 rounded-xl border shadow-sm">
-          <button onClick={() => setActiveTab('current')} className={`px-4 py-2 rounded-lg text-sm font-bold ${activeTab === 'current' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>En curso</button>
-          <button onClick={() => setActiveTab('programmed')} className={`px-4 py-2 rounded-lg text-sm font-bold ${activeTab === 'programmed' ? 'bg-amber-500 text-white' : 'text-slate-500'}`}>Programados</button>
-          <button onClick={() => setActiveTab('all')} className={`px-4 py-2 rounded-lg text-sm font-bold ${activeTab === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Historial</button>
+        <div className="flex items-center space-x-3 bg-white p-1.5 rounded-xl border shadow-sm">
+          <button 
+            onClick={() => setActiveTab('current')} 
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'current' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            En Curso
+          </button>
+          <button 
+            onClick={() => setActiveTab('programmed')} 
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'programmed' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            Programados
+          </button>
+          <button 
+            onClick={() => setActiveTab('all')} 
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'all' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            Historial
+          </button>
         </div>
 
         {isAdmin && (
-          <button onClick={() => { setEditingId(null); setShowForm(true); }} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg flex items-center">
-            <Plus className="mr-2" /> Registrar Viaje
+          <button 
+            onClick={() => { setEditingId(null); setNewTrip({ estado: TripStatus.PROGRAMMED, fecha: new Date().toISOString().split('T')[0], origen: 'Montevideo', pesoKg:0, kmRecorridos:0, tarifa:0 }); setShowForm(true); }} 
+            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-200 flex items-center transition-all"
+          >
+            <Plus className="mr-2 w-5 h-5" /> Nuevo Viaje
           </button>
         )}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 border-b text-xs text-slate-500 uppercase font-bold">
-            <tr>
-              <th className="p-4">Fecha</th>
-              <th className="p-4">Cliente</th>
-              <th className="p-4">Carga / Peso</th>
-              <th className="p-4">Ruta / Km</th>
-              <th className="p-4">Estado</th>
-              <th className="p-4 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm">
-            {filteredTrips.map(trip => (
-              <tr key={trip.id} className="hover:bg-slate-50/50">
-                <td className="p-4 font-bold">{trip.fecha}</td>
-                <td className="p-4">
-                  <div className="font-semibold text-blue-900">{clients.find(c => c.id === trip.clientId)?.nombreComercial}</div>
-                  <div className="text-[10px] text-slate-400 font-mono uppercase">{trip.id}</div>
-                </td>
-                <td className="p-4">
-                  <div className="font-medium text-slate-700">{trip.contenido}</div>
-                  <div className="text-xs text-slate-500">{(trip.pesoKg/1000).toFixed(1)} Toneladas</div>
-                </td>
-                <td className="p-4">
-                  <div className="flex items-center">{trip.origen} <ArrowRight className="w-3 h-3 mx-1 text-slate-400"/> {trip.destino}</div>
-                  <div className="text-xs text-blue-600 font-bold">{trip.kmRecorridos} Km</div>
-                </td>
-                <td className="p-4">
-                  <button onClick={() => handleStatusUpdate(trip)} className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase flex items-center gap-1 ${trip.estado === TripStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' : trip.estado === TripStatus.PROGRAMMED ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-                    <RefreshCw className="w-3 h-3" /> {trip.estado}
-                  </button>
-                </td>
-                <td className="p-4 text-right">
-                  <div className="flex justify-end space-x-2">
-                    <button onClick={() => handleEdit(trip)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Pencil className="w-4 h-4"/></button>
-                    <button onClick={async () => { if(confirm("¿Borrar viaje?")) { await deleteTripInSheet(trip.id); window.location.reload(); } }} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4"/></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Filters Bar */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="relative col-span-1 md:col-span-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+                type="text" 
+                placeholder="Buscar por ID de viaje..." 
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                value={filters.searchId}
+                onChange={e => setFilters({...filters, searchId: e.target.value})}
+            />
+        </div>
+        <select 
+            className="p-2 bg-slate-50 border rounded-lg text-sm outline-none"
+            value={filters.clientId}
+            onChange={e => setFilters({...filters, clientId: e.target.value})}
+        >
+            <option value="">Todos los Clientes</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.nombreComercial}</option>)}
+        </select>
+        <div className="flex gap-2 col-span-2">
+            <input type="date" className="w-full p-2 bg-slate-50 border rounded-lg text-sm" onChange={e => setFilters({...filters, startDate: e.target.value})} />
+            <input type="date" className="w-full p-2 bg-slate-50 border rounded-lg text-sm" onChange={e => setFilters({...filters, endDate: e.target.value})} />
+        </div>
       </div>
 
+      {/* Table Section */}
+      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Fecha / ID</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Cliente / RUT</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ruta y Carga</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Datos Logísticos</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Estado</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Beneficio Estimado</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {filteredTrips.map(trip => {
+                const client = clients.find(c => c.id === trip.clientId);
+                return (
+                  <tr key={trip.id} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="p-4">
+                      <div className="font-bold text-slate-800 flex items-center"><Calendar className="w-3 h-3 mr-1 text-slate-400"/> {trip.fecha}</div>
+                      <div className="text-[10px] font-mono text-slate-400 mt-1">{trip.id}</div>
+                    </td>
+                    <td className="p-4">
+                      <div className="font-semibold text-blue-900">{client?.nombreComercial || 'Desconocido'}</div>
+                      <div className="text-xs text-slate-400">{client?.rut || 'Sin RUT'}</div>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center font-medium text-slate-700">
+                         {trip.origen} <ArrowRight className="w-3 h-3 mx-2 text-slate-300"/> {trip.destino}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1 flex items-center">
+                         <Package className="w-3 h-3 mr-1"/> {trip.contenido} • <span className="font-bold ml-1">{(trip.pesoKg/1000).toFixed(1)}t</span>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                        <div className="space-y-1">
+                            <div className="text-xs flex items-center text-slate-600">
+                                <MapPin className="w-3 h-3 mr-1 text-blue-500"/> {trip.kmRecorridos} km
+                            </div>
+                            <div className="text-xs flex items-center text-slate-600">
+                                <DollarSign className="w-3 h-3 mr-1 text-green-500"/> {trip.tarifa} USD/t
+                            </div>
+                        </div>
+                    </td>
+                    <td className="p-4">
+                      <button 
+                        disabled={!isAdmin || loading}
+                        onClick={() => handleStatusUpdate(trip)}
+                        className={`
+                          px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1.5 transition-all
+                          ${trip.estado === TripStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : ''}
+                          ${trip.estado === TripStatus.PROGRAMMED ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : ''}
+                          ${trip.estado === TripStatus.COMPLETED ? 'bg-green-100 text-green-700 hover:bg-green-200' : ''}
+                          ${trip.estado === TripStatus.CLOSED ? 'bg-slate-100 text-slate-600' : ''}
+                        `}
+                      >
+                        <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                        {trip.estado}
+                      </button>
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="font-bold text-slate-700">{calculateBenefit(trip)}</div>
+                    </td>
+                    <td className="p-4 text-center">
+                      {isAdmin && (
+                        <div className="flex justify-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => handleEdit(trip)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Editar">
+                             <Pencil className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(trip.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar">
+                             <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredTrips.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-12 text-center text-slate-400 italic">
+                    <Package className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    No hay viajes que coincidan con los filtros.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* MODAL FORM */}
       {showForm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
-            <div className="bg-slate-50 p-6 border-b flex justify-between items-center">
-              <h3 className="text-xl font-bold">{editingId ? 'Editar Viaje' : 'Nuevo Registro de Carga'}</h3>
-              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600"><X /></button>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="bg-slate-50 px-8 py-6 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">{editingId ? 'Editar Operación' : 'Registrar Nuevo Viaje'}</h3>
+                <p className="text-xs text-slate-500 mt-1">Complete los detalles logísticos</p>
+              </div>
+              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600 transition-colors bg-white p-2 rounded-full shadow-sm hover:shadow">
+                <X className="w-5 h-5" />
+              </button>
             </div>
+            
             <form onSubmit={handleSubmit} className="p-8 grid grid-cols-2 gap-6">
               <div className="col-span-2">
-                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Seleccionar Cliente</label>
-                <select value={newTrip.clientId} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" required onChange={e => setNewTrip({...newTrip, clientId: e.target.value})}>
-                  <option value="">Buscar cliente...</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.nombreComercial} ({c.rut})</option>)}
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Cliente Asociado</label>
+                <select 
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  required 
+                  value={newTrip.clientId || ''}
+                  onChange={e => setNewTrip({...newTrip, clientId: e.target.value})}
+                >
+                  <option value="">Seleccione un cliente...</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.nombreComercial} - {c.rut}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Fecha</label>
-                <input type="date" value={newTrip.fecha} className="w-full p-3 bg-slate-100 border rounded-xl" onChange={e => setNewTrip({...newTrip, fecha: e.target.value})} />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Producto</label>
-                <input type="text" value={newTrip.contenido} placeholder="Ej: Arroz a granel" className="w-full p-3 bg-slate-100 border rounded-xl" onChange={e => setNewTrip({...newTrip, contenido: e.target.value})} />
-              </div>
+
               <div className="col-span-1">
-                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Origen</label>
-                <input type="text" value={newTrip.origen} className="w-full p-3 bg-slate-100 border rounded-xl" onChange={e => setNewTrip({...newTrip, origen: e.target.value})} />
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Fecha de Carga</label>
+                 <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/>
+                    <input 
+                      type="date" 
+                      required
+                      value={newTrip.fecha} 
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" 
+                      onChange={e => setNewTrip({...newTrip, fecha: e.target.value})} 
+                    />
+                 </div>
               </div>
+
               <div className="col-span-1">
-                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Destino</label>
-                <input type="text" value={newTrip.destino} className="w-full p-3 bg-slate-100 border rounded-xl" onChange={e => setNewTrip({...newTrip, destino: e.target.value})} />
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Producto / Carga</label>
+                 <div className="relative">
+                    <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"/>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="Ej. Arroz a Granel"
+                      value={newTrip.contenido || ''} 
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" 
+                      onChange={e => setNewTrip({...newTrip, contenido: e.target.value})} 
+                    />
+                 </div>
               </div>
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Peso (Kg)</label>
-                <input type="number" value={newTrip.pesoKg} className="w-full p-3 bg-slate-100 border rounded-xl font-bold" onChange={e => setNewTrip({...newTrip, pesoKg: Number(e.target.value)})} />
+
+              <div className="col-span-1">
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Origen</label>
+                 <input 
+                    type="text" 
+                    required
+                    value={newTrip.origen || ''} 
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" 
+                    onChange={e => setNewTrip({...newTrip, origen: e.target.value})} 
+                 />
               </div>
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Kilómetros</label>
-                <input type="number" value={newTrip.kmRecorridos} className="w-full p-3 bg-slate-100 border rounded-xl font-bold text-blue-600" onChange={e => setNewTrip({...newTrip, kmRecorridos: Number(e.target.value)})} />
+
+              <div className="col-span-1">
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Destino</label>
+                 <input 
+                    type="text" 
+                    required
+                    placeholder="Departamento o Ciudad"
+                    value={newTrip.destino || ''} 
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" 
+                    onChange={e => setNewTrip({...newTrip, destino: e.target.value})} 
+                 />
               </div>
+
+              <div className="col-span-1">
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Peso Total (Kg)</label>
+                 <input 
+                    type="number" 
+                    required
+                    min="0"
+                    placeholder="0"
+                    value={newTrip.pesoKg || ''} 
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono" 
+                    onChange={e => setNewTrip({...newTrip, pesoKg: Number(e.target.value)})} 
+                 />
+              </div>
+
+              <div className="col-span-1">
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Distancia (Km)</label>
+                 <input 
+                    type="number" 
+                    required
+                    min="0"
+                    placeholder="0"
+                    value={newTrip.kmRecorridos || ''} 
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-blue-600 font-bold" 
+                    onChange={e => setNewTrip({...newTrip, kmRecorridos: Number(e.target.value)})} 
+                 />
+              </div>
+
               <div className="col-span-2">
-                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Tarifa pactada (USD/Ton)</label>
-                <input type="number" step="any" value={newTrip.tarifa} className="w-full p-4 bg-blue-50 border-2 border-blue-100 rounded-xl text-xl font-black text-blue-700" onChange={e => setNewTrip({...newTrip, tarifa: Number(e.target.value)})} />
+                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Tarifa Pactada (USD / Tonelada)</label>
+                 <div className="relative">
+                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-green-600"/>
+                    <input 
+                        type="number" 
+                        required
+                        step="0.01"
+                        min="0"
+                        value={newTrip.tarifa || ''} 
+                        className="w-full pl-12 pr-4 py-4 bg-green-50 border border-green-200 rounded-xl outline-none focus:ring-2 focus:ring-green-500 text-xl font-bold text-green-800" 
+                        onChange={e => setNewTrip({...newTrip, tarifa: Number(e.target.value)})} 
+                    />
+                 </div>
               </div>
-              
-              <button disabled={loading} type="submit" className="col-span-2 bg-blue-600 text-white py-4 rounded-2xl font-bold flex justify-center items-center text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-200">
-                {loading ? <RefreshCw className="animate-spin mr-2"/> : <Save className="mr-2"/>} {editingId ? 'Guardar Cambios' : 'Confirmar Viaje'}
-              </button>
+
+              <div className="col-span-2 pt-4">
+                 <button 
+                    type="submit" 
+                    disabled={loading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-200 flex justify-center items-center transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                 >
+                    {loading ? <RefreshCw className="animate-spin mr-2" /> : <Save className="mr-2" />}
+                    {loading ? 'Sincronizando...' : (editingId ? 'Guardar Cambios' : 'Confirmar Operación')}
+                 </button>
+              </div>
             </form>
           </div>
         </div>
