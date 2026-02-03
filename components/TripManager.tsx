@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trip, TripStatus, Client, User } from '../types';
+import { Trip, TripStatus, Client, User } from '../src/types';
 import { saveTripToSheet, updateTripInSheet, deleteTripInSheet } from '../services/api';
 import { 
   Plus, Calendar, Package, ArrowRight, Search, Filter, Sparkles, 
