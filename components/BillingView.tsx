@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
+// IMPORTANTE: Ruta corregida según tu estructura de carpetas
 import { Trip, TripStatus, Client } from '../src/types';
 import { uploadInvoice } from '../services/api';
-import { UploadCloud, CheckCircle, Loader2, ExternalLink, Calendar, Search, Filter, X } from 'lucide-react';
+import { 
+  UploadCloud, CheckCircle, Loader2, ExternalLink, 
+  Calendar, Search, X, Receipt, Filter, FileText 
+} from 'lucide-react';
 
 interface BillingViewProps {
   trips: Trip[];
@@ -14,7 +18,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
   const [activeTab, setActiveTab] = useState<'pending' | 'closed'>('pending');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  // -- Filters State --
+  // Filtros
   const [filters, setFilters] = useState({
       dateStart: '',
       dateEnd: '',
@@ -22,18 +26,24 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
       searchId: ''
   });
 
-  // Filter trips based on selection AND local filters
+  // Lógica de filtrado de viajes
   const visibleTrips = trips.filter(t => {
-      // 1. Tab Status Filter
+      // 1. Filtro por pestaña (Pendientes de Facturar vs Cerrados)
       if (activeTab === 'pending' && t.estado !== TripStatus.COMPLETED) return false;
       if (activeTab === 'closed' && t.estado !== TripStatus.CLOSED) return false;
 
-      // 2. Advanced Filters
+      // 2. Filtro de búsqueda (ID o RUT)
       const client = clients.find(c => c.id === t.clientId);
-      const rutMatch = client?.rut?.includes(filters.searchId) || false;
+      const searchMatch = 
+        t.id.toLowerCase().includes(filters.searchId.toLowerCase()) || 
+        (client?.rut && client.rut.includes(filters.searchId));
       
-      if (filters.searchId && !t.id.toLowerCase().includes(filters.searchId.toLowerCase()) && !rutMatch) return false;
+      if (filters.searchId && !searchMatch) return false;
+
+      // 3. Filtro por Cliente
       if (filters.clientId && t.clientId !== filters.clientId) return false;
+
+      // 4. Filtro por Fecha
       if (filters.dateStart && t.fecha < filters.dateStart) return false;
       if (filters.dateEnd && t.fecha > filters.dateEnd) return false;
 
@@ -41,210 +51,191 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
   });
 
   const handleFileUpload = async (trip: Trip, e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    
-    const file = e.target.files[0];
-    const clientName = clients.find(c => c.id === trip.clientId)?.nombreComercial || 'Unknown';
-    
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     setUploadingId(trip.id);
-    
     try {
-      const url = await uploadInvoice(trip.id, clientName, file);
+      const url = await uploadInvoice(trip.id, file);
       if (url) {
         onInvoiceUploaded(trip.id, url);
+        alert("Factura cargada con éxito. El viaje ya puede ser cerrado en el Gestor de Viajes.");
       }
     } catch (error) {
-      console.error(error);
-      alert('Error al subir la factura. Intente nuevamente.');
+      console.error("Error subiendo factura:", error);
+      alert("Error al subir el archivo.");
     } finally {
       setUploadingId(null);
     }
   };
 
-  const handleViewInvoice = (url: string) => {
-      // Try to convert view link to preview for embedding, otherwise just use URL
-      const embedUrl = url.includes('/view') ? url.replace('/view', '/preview') : url;
-      setPreviewUrl(embedUrl);
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-            <div>
-                <h2 className="text-xl font-bold text-slate-800 mb-1">Módulo de Facturación</h2>
-                <p className="text-slate-500 text-sm">Auditoría y carga de comprobantes fiscales.</p>
-            </div>
-            <div className="flex space-x-2 mt-4 md:mt-0">
-                <button 
-                    onClick={() => setActiveTab('pending')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'pending' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'text-slate-500 hover:bg-slate-50'}`}
-                >
-                    Pendientes
-                </button>
-                <button 
-                    onClick={() => setActiveTab('closed')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'closed' ? 'bg-green-100 text-green-700 border border-green-200' : 'text-slate-500 hover:bg-slate-50'}`}
-                >
-                    Cerrados
-                </button>
-            </div>
-        </div>
-
-        {/* Filters Bar */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-slate-100">
-             <div className="relative">
-                 <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                 <input 
-                   type="text" 
-                   placeholder="Buscar ID Viaje o RUT..." 
-                   className="w-full pl-9 p-2 bg-slate-50 border border-slate-300 rounded-lg text-sm outline-none"
-                   value={filters.searchId}
-                   onChange={e => setFilters({...filters, searchId: e.target.value})}
-                 />
-             </div>
-             <select 
-                className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-sm outline-none"
-                value={filters.clientId}
-                onChange={e => setFilters({...filters, clientId: e.target.value})}
-             >
-                <option value="">Todos los Clientes</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.nombreComercial}</option>)}
-             </select>
-             <div className="flex items-center space-x-2 col-span-2">
-                 <Calendar className="w-4 h-4 text-slate-400" />
-                 <input 
-                   type="date" 
-                   className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-sm outline-none"
-                   value={filters.dateStart}
-                   onChange={e => setFilters({...filters, dateStart: e.target.value})}
-                 />
-                 <span className="text-slate-400">-</span>
-                 <input 
-                   type="date" 
-                   className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-sm outline-none"
-                   value={filters.dateEnd}
-                   onChange={e => setFilters({...filters, dateEnd: e.target.value})}
-                 />
-             </div>
+    <div className="space-y-6 animate-fade-in font-sans text-slate-600">
+      
+      {/* HEADER Y TABS */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="bg-slate-100 p-1 rounded-lg border border-slate-200 inline-flex">
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+              activeTab === 'pending' 
+                ? 'bg-white text-blue-900 shadow-sm border border-slate-100' 
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Pendientes de Facturar
+          </button>
+          <button
+            onClick={() => setActiveTab('closed')}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+              activeTab === 'closed' 
+                ? 'bg-white text-blue-900 shadow-sm border border-slate-100' 
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Viajes Cerrados
+          </button>
         </div>
       </div>
 
+      {/* BARRA DE FILTROS (Fiel a la captura) */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+          <div className="md:col-span-4 relative">
+             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+             <input 
+               type="text" 
+               placeholder="Buscar por ID de viaje o RUT..." 
+               className="w-full pl-9 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500"
+               value={filters.searchId}
+               onChange={e => setFilters({...filters, searchId: e.target.value})}
+             />
+          </div>
+          <div className="md:col-span-3">
+            <select 
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500"
+                value={filters.clientId}
+                onChange={e => setFilters({...filters, clientId: e.target.value})}
+            >
+                <option value="">Filtrar por Cliente</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.nombreComercial}</option>)}
+            </select>
+          </div>
+          <div className="md:col-span-5 flex gap-2">
+            <div className="relative flex-1">
+                <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                <input type="date" className="w-full pl-9 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500" onChange={e => setFilters({...filters, dateStart: e.target.value})} />
+            </div>
+            <div className="relative flex-1">
+                <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                <input type="date" className="w-full pl-9 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500" onChange={e => setFilters({...filters, dateEnd: e.target.value})} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* TABLA DE FACTURACIÓN */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-left text-sm text-slate-600">
-          <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider border-b border-slate-200">
             <tr>
-              <th className="p-4">ID / Estado</th>
-              <th className="p-4">Fecha</th>
-              <th className="p-4">Cliente (RUT)</th>
-              <th className="p-4">Detalle Carga</th>
-              <th className="p-4 text-right">Monto Total</th>
-              <th className="p-4 text-center">Acción</th>
+              <th className="p-4">ID Viaje</th>
+              <th className="p-4">Cliente / RUT</th>
+              <th className="p-4">Monto Total</th>
+              <th className="p-4 text-center">Factura</th>
+              <th className="p-4 text-center">Estado Fiscal</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {visibleTrips.map(trip => {
               const client = clients.find(c => c.id === trip.clientId);
-              const clientName = client?.nombreComercial || 'Desconocido';
-              const clientRut = client?.rut || 'S/D';
               const totalAmount = trip.tarifa * (trip.pesoKg / 1000);
-              
+
               return (
-                <tr key={trip.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={trip.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 font-mono text-xs font-bold text-blue-900">{trip.id}</td>
                   <td className="p-4">
-                      <div className="font-mono text-slate-500">{trip.id}</div>
-                      {trip.estado === TripStatus.CLOSED && (
-                          <div className="flex items-center text-xs text-green-600 mt-1 font-medium">
-                              <CheckCircle className="w-3 h-3 mr-1" /> Cerrado
-                          </div>
-                      )}
-                  </td>
-                  <td className="p-4">{trip.fecha}</td>
-                  <td className="p-4">
-                      <div className="font-medium text-slate-800">{clientName}</div>
-                      <div className="text-xs text-slate-400 font-mono mt-0.5">RUT: {clientRut}</div>
+                    <div className="font-bold text-slate-800">{client?.nombreComercial || 'Desconocido'}</div>
+                    <div className="text-xs text-slate-400 font-mono">RUT: {client?.rut || 'N/A'}</div>
                   </td>
                   <td className="p-4">
-                    <span className="block text-slate-800">{trip.contenido}</span>
-                    <span className="text-xs text-slate-400">{(trip.pesoKg / 1000).toFixed(1)} tons - {trip.origen} &rarr; {trip.destino}</span>
-                  </td>
-                  <td className="p-4 text-right font-bold text-slate-800">
-                    ${totalAmount.toLocaleString()}
+                    <div className="text-xs text-slate-400">USD {trip.tarifa} / ton</div>
+                    <div className="font-bold text-slate-800">USD {totalAmount.toLocaleString()}</div>
                   </td>
                   <td className="p-4 text-center">
-                    {trip.estado === TripStatus.CLOSED ? (
-                        <button 
-                            onClick={() => trip.facturaUrl && handleViewInvoice(trip.facturaUrl)}
-                            className="inline-flex items-center px-4 py-2 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg transition-colors text-xs font-medium border border-green-200"
-                        >
-                            <ExternalLink className="w-3 h-3 mr-2" /> Ver Factura
-                        </button>
+                    {trip.facturaUrl ? (
+                      <button 
+                        onClick={() => setPreviewUrl(trip.facturaUrl!)}
+                        className="inline-flex items-center px-3 py-1 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors text-xs font-bold"
+                      >
+                        <FileText className="w-3.5 h-3.5 mr-1.5" /> Ver PDF
+                      </button>
                     ) : (
-                        uploadingId === trip.id ? (
-                        <button disabled className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg cursor-wait text-xs font-medium">
-                            <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Subiendo...
-                        </button>
-                        ) : (
-                        <div className="relative inline-block">
-                            <input
-                            type="file"
-                            accept=".pdf,image/*"
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      <div className="relative inline-block">
+                        <input 
+                            type="file" 
+                            accept=".pdf,image/*" 
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
                             onChange={(e) => handleFileUpload(trip, e)}
-                            />
-                            <button className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm text-xs font-medium">
-                            <UploadCloud className="w-3 h-3 mr-2" /> Cargar
-                            </button>
-                        </div>
-                        )
+                            disabled={uploadingId === trip.id}
+                        />
+                        <button className={`inline-flex items-center px-4 py-1.5 bg-blue-900 text-white rounded-lg transition-all text-xs font-bold shadow-sm ${uploadingId === trip.id ? 'opacity-50' : 'hover:bg-blue-800'}`}>
+                          {uploadingId === trip.id ? (
+                            <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> Subiendo...</>
+                          ) : (
+                            <><UploadCloud className="w-3.5 h-3.5 mr-2" /> Cargar Factura</>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-4 text-center">
+                    {trip.facturaUrl ? (
+                      <span className="inline-flex items-center px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-[10px] font-black uppercase tracking-tighter">
+                        <CheckCircle className="w-3 h-3 mr-1" /> Lista para Cierre
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full text-[10px] font-black uppercase tracking-tighter">
+                        Pendiente Carga
+                      </span>
                     )}
                   </td>
                 </tr>
               );
             })}
             {visibleTrips.length === 0 && (
-              <tr>
-                <td colSpan={6} className="p-12 text-center">
-                  <div className="flex flex-col items-center justify-center text-slate-400">
-                    <CheckCircle className="w-12 h-12 mb-4 text-slate-300" />
-                    <p className="text-lg font-medium text-slate-600">Sin registros</p>
-                    <p className="text-sm">No hay viajes que coincidan con los filtros.</p>
-                  </div>
-                </td>
-              </tr>
+                <tr>
+                    <td colSpan={5} className="p-12 text-center text-slate-400 italic bg-slate-50/30">
+                        <Receipt className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                        No se encontraron viajes en este estado.
+                    </td>
+                </tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* Invoice Preview Modal */}
+      {/* MODAL DE VISTA PREVIA PDF */}
       {previewUrl && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden animate-fade-in-up">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                      <h3 className="font-bold text-slate-800 flex items-center">
-                          <ExternalLink className="w-4 h-4 mr-2" /> Vista Previa de Factura
+                      <h3 className="font-bold text-slate-800 flex items-center text-sm uppercase tracking-wider">
+                          <ExternalLink className="w-4 h-4 mr-2" /> Vista Previa de Factura Digital
                       </h3>
                       <button 
-                        onClick={() => setPreviewUrl(null)}
-                        className="p-1 hover:bg-slate-200 rounded-full transition-colors"
+                        onClick={() => setPreviewUrl(null)} 
+                        className="p-1.5 hover:bg-slate-200 rounded-full transition-colors text-slate-500"
                       >
-                          <X className="w-6 h-6 text-slate-500" />
+                        <X className="w-6 h-6" />
                       </button>
                   </div>
-                  <div className="flex-1 bg-slate-100 relative">
+                  <div className="flex-1 bg-slate-200">
                       <iframe 
-                          src={previewUrl} 
-                          className="w-full h-full" 
-                          title="Invoice Preview"
-                          onError={(e) => console.log("Iframe error", e)}
+                        src={previewUrl} 
+                        className="w-full h-full border-none" 
+                        title="Invoice Preview" 
                       />
-                      {/* Fallback link if iframe fails due to permissions */}
-                      <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-none">
-                          <span className="bg-slate-800 text-white text-xs px-3 py-1 rounded-full opacity-75">
-                              ¿No carga? <a href={previewUrl} target="_blank" rel="noreferrer" className="underline pointer-events-auto">Abrir en nueva pestaña</a>
-                          </span>
-                      </div>
                   </div>
               </div>
           </div>
