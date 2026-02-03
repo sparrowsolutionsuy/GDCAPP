@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Trip, TripStatus, Client } from '../src/types';
 import { uploadInvoice } from '../services/api';
-import { UploadCloud, CheckCircle, Loader2, ExternalLink, Calendar, Search, X, Receipt } from 'lucide-react';
+import { UploadCloud, CheckCircle, Loader2, ExternalLink, Calendar, Search, Filter, X } from 'lucide-react';
 
 interface BillingViewProps {
   trips: Trip[];
@@ -14,7 +14,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
   const [activeTab, setActiveTab] = useState<'pending' | 'closed'>('pending');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  // Filtros
+  // -- Filters State --
   const [filters, setFilters] = useState({
       dateStart: '',
       dateEnd: '',
@@ -22,13 +22,14 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
       searchId: ''
   });
 
+  // Filter trips based on selection AND local filters
   const visibleTrips = trips.filter(t => {
+      // 1. Tab Status Filter
       if (activeTab === 'pending' && t.estado !== TripStatus.COMPLETED) return false;
       if (activeTab === 'closed' && t.estado !== TripStatus.CLOSED) return false;
 
-      // Safe Client Access
+      // 2. Advanced Filters
       const client = clients.find(c => c.id === t.clientId);
-      // Evitar crash si client es undefined
       const rutMatch = client?.rut?.includes(filters.searchId) || false;
       
       if (filters.searchId && !t.id.toLowerCase().includes(filters.searchId.toLowerCase()) && !rutMatch) return false;
@@ -43,8 +44,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
     if (!e.target.files || e.target.files.length === 0) return;
     
     const file = e.target.files[0];
-    // Protección contra undefined client
-    const clientName = clients.find(c => c.id === trip.clientId)?.nombreComercial || 'Cliente_Desconocido';
+    const clientName = clients.find(c => c.id === trip.clientId)?.nombreComercial || 'Unknown';
     
     setUploadingId(trip.id);
     
@@ -52,7 +52,6 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
       const url = await uploadInvoice(trip.id, clientName, file);
       if (url) {
         onInvoiceUploaded(trip.id, url);
-        alert("Factura subida correctamente");
       }
     } catch (error) {
       console.error(error);
@@ -62,14 +61,18 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
     }
   };
 
+  const handleViewInvoice = (url: string) => {
+      // Try to convert view link to preview for embedding, otherwise just use URL
+      const embedUrl = url.includes('/view') ? url.replace('/view', '/preview') : url;
+      setPreviewUrl(embedUrl);
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
             <div>
-                <h2 className="text-xl font-bold text-slate-800 mb-1 flex items-center">
-                    <Receipt className="mr-2 text-blue-600"/> Módulo de Facturación
-                </h2>
+                <h2 className="text-xl font-bold text-slate-800 mb-1">Módulo de Facturación</h2>
                 <p className="text-slate-500 text-sm">Auditoría y carga de comprobantes fiscales.</p>
             </div>
             <div className="flex space-x-2 mt-4 md:mt-0">
@@ -110,9 +113,19 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
              </select>
              <div className="flex items-center space-x-2 col-span-2">
                  <Calendar className="w-4 h-4 text-slate-400" />
-                 <input type="date" className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-sm outline-none" value={filters.dateStart} onChange={e => setFilters({...filters, dateStart: e.target.value})} />
+                 <input 
+                   type="date" 
+                   className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-sm outline-none"
+                   value={filters.dateStart}
+                   onChange={e => setFilters({...filters, dateStart: e.target.value})}
+                 />
                  <span className="text-slate-400">-</span>
-                 <input type="date" className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-sm outline-none" value={filters.dateEnd} onChange={e => setFilters({...filters, dateEnd: e.target.value})} />
+                 <input 
+                   type="date" 
+                   className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-sm outline-none"
+                   value={filters.dateEnd}
+                   onChange={e => setFilters({...filters, dateEnd: e.target.value})}
+                 />
              </div>
         </div>
       </div>
@@ -131,17 +144,20 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
           </thead>
           <tbody className="divide-y divide-slate-100">
             {visibleTrips.map(trip => {
-              // PROTECCIÓN CONTRA UNDEFINED
               const client = clients.find(c => c.id === trip.clientId);
               const clientName = client?.nombreComercial || 'Desconocido';
-              const clientRut = client?.rut || '---';
+              const clientRut = client?.rut || 'S/D';
               const totalAmount = trip.tarifa * (trip.pesoKg / 1000);
               
               return (
                 <tr key={trip.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-4">
-                      <div className="font-mono text-slate-500 text-xs">{trip.id}</div>
-                      {trip.estado === TripStatus.CLOSED && <div className="flex items-center text-xs text-green-600 mt-1 font-medium"><CheckCircle className="w-3 h-3 mr-1" /> Cerrado</div>}
+                      <div className="font-mono text-slate-500">{trip.id}</div>
+                      {trip.estado === TripStatus.CLOSED && (
+                          <div className="flex items-center text-xs text-green-600 mt-1 font-medium">
+                              <CheckCircle className="w-3 h-3 mr-1" /> Cerrado
+                          </div>
+                      )}
                   </td>
                   <td className="p-4">{trip.fecha}</td>
                   <td className="p-4">
@@ -157,16 +173,26 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
                   </td>
                   <td className="p-4 text-center">
                     {trip.estado === TripStatus.CLOSED ? (
-                        <button onClick={() => trip.facturaUrl && setPreviewUrl(trip.facturaUrl)} className="inline-flex items-center px-3 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg transition-colors text-xs font-medium border border-green-200">
+                        <button 
+                            onClick={() => trip.facturaUrl && handleViewInvoice(trip.facturaUrl)}
+                            className="inline-flex items-center px-4 py-2 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg transition-colors text-xs font-medium border border-green-200"
+                        >
                             <ExternalLink className="w-3 h-3 mr-2" /> Ver Factura
                         </button>
                     ) : (
                         uploadingId === trip.id ? (
-                            <button disabled className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-lg cursor-wait text-xs font-medium"><Loader2 className="w-3 h-3 mr-2 animate-spin" /> Subiendo...</button>
+                        <button disabled className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg cursor-wait text-xs font-medium">
+                            <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Subiendo...
+                        </button>
                         ) : (
                         <div className="relative inline-block">
-                            <input type="file" accept=".pdf,image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => handleFileUpload(trip, e)} />
-                            <button className="inline-flex items-center px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm text-xs font-medium">
+                            <input
+                            type="file"
+                            accept=".pdf,image/*"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            onChange={(e) => handleFileUpload(trip, e)}
+                            />
+                            <button className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm text-xs font-medium">
                             <UploadCloud className="w-3 h-3 mr-2" /> Cargar
                             </button>
                         </div>
@@ -176,18 +202,50 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
                 </tr>
               );
             })}
+            {visibleTrips.length === 0 && (
+              <tr>
+                <td colSpan={6} className="p-12 text-center">
+                  <div className="flex flex-col items-center justify-center text-slate-400">
+                    <CheckCircle className="w-12 h-12 mb-4 text-slate-300" />
+                    <p className="text-lg font-medium text-slate-600">Sin registros</p>
+                    <p className="text-sm">No hay viajes que coincidan con los filtros.</p>
+                  </div>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
+      {/* Invoice Preview Modal */}
       {previewUrl && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden animate-fade-in-up">
                   <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                      <h3 className="font-bold text-slate-800 flex items-center"><ExternalLink className="w-4 h-4 mr-2" /> Vista Previa</h3>
-                      <button onClick={() => setPreviewUrl(null)} className="p-1 hover:bg-slate-200 rounded-full transition-colors"><X className="w-6 h-6 text-slate-500" /></button>
+                      <h3 className="font-bold text-slate-800 flex items-center">
+                          <ExternalLink className="w-4 h-4 mr-2" /> Vista Previa de Factura
+                      </h3>
+                      <button 
+                        onClick={() => setPreviewUrl(null)}
+                        className="p-1 hover:bg-slate-200 rounded-full transition-colors"
+                      >
+                          <X className="w-6 h-6 text-slate-500" />
+                      </button>
                   </div>
-                  <iframe src={previewUrl} className="w-full h-full" title="Invoice Preview" />
+                  <div className="flex-1 bg-slate-100 relative">
+                      <iframe 
+                          src={previewUrl} 
+                          className="w-full h-full" 
+                          title="Invoice Preview"
+                          onError={(e) => console.log("Iframe error", e)}
+                      />
+                      {/* Fallback link if iframe fails due to permissions */}
+                      <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-none">
+                          <span className="bg-slate-800 text-white text-xs px-3 py-1 rounded-full opacity-75">
+                              ¿No carga? <a href={previewUrl} target="_blank" rel="noreferrer" className="underline pointer-events-auto">Abrir en nueva pestaña</a>
+                          </span>
+                      </div>
+                  </div>
               </div>
           </div>
       )}
