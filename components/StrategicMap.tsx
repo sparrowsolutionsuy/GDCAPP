@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { Icon } from 'leaflet';
 import { Client, Trip } from '../src/types';
 import { DEPARTAMENTOS, MAP_CENTER, MAP_ZOOM } from '../src/constants';
-import { Filter, MapPin, Truck, Mail, Phone, User } from 'lucide-react';
+import { MapPin, Truck, Mail, Phone, Search, X } from 'lucide-react';
+import 'leaflet/dist/leaflet.css';
 
-// Fix for default Leaflet marker icons in React
-// In a real build pipeline, you'd handle assets differently
 const customIcon = new Icon({
   iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
   iconSize: [32, 32],
@@ -21,91 +20,81 @@ interface StrategicMapProps {
 
 export const StrategicMap: React.FC<StrategicMapProps> = ({ clients, trips }) => {
   const [selectedDept, setSelectedDept] = useState<string>('Todos');
-  const [selectedClient, setSelectedClient] = useState<string>('Todos');
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredClients = clients.filter(c => {
-    if (selectedDept !== 'Todos' && c.departamento !== selectedDept) return false;
-    if (selectedClient !== 'Todos' && c.id !== selectedClient) return false;
-    return true;
-  });
+  const filteredClients = useMemo(() => {
+    return clients.filter(c => {
+      const matchesDept = selectedDept === 'Todos' || c.departamento === selectedDept;
+      const matchesSearch = c.nombreComercial.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            c.localidad.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesDept && matchesSearch;
+    });
+  }, [clients, selectedDept, searchTerm]);
 
   return (
     <div className="h-[calc(100vh-140px)] flex flex-col space-y-4">
-      {/* Filters Bar */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center gap-4">
-        <div className="flex items-center text-slate-700 font-medium">
-          <Filter className="text-slate-500 w-5 h-5 mr-2" />
-          Filtros:
-        </div>
-
-        <div className="flex items-center space-x-2">
-            <span className="text-sm text-slate-500">Departamento:</span>
-            <select 
-            className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 outline-none"
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-center">
+        {/* Filtro Departamento */}
+        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          <span className="text-slate-500 mr-2 text-sm font-medium">Depto:</span>
+          <select 
             value={selectedDept}
             onChange={(e) => setSelectedDept(e.target.value)}
-            >
+            className="bg-transparent outline-none text-sm font-semibold text-slate-700"
+          >
             <option value="Todos">Todos</option>
-            {DEPARTAMENTOS.map(dep => (
-                <option key={dep} value={dep}>{dep}</option>
-            ))}
-            </select>
+            {DEPARTAMENTOS.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
         </div>
 
-        <div className="flex items-center space-x-2">
-            <span className="text-sm text-slate-500">Cliente:</span>
-            <select 
-            className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 outline-none max-w-[200px]"
-            value={selectedClient}
-            onChange={(e) => setSelectedClient(e.target.value)}
-            >
-            <option value="Todos">Todos</option>
-            {clients.map(client => (
-                <option key={client.id} value={client.id}>{client.nombreComercial}</option>
-            ))}
-            </select>
+        {/* Buscador de Cliente (Reemplaza al antiguo Select) */}
+        <div className="flex-1 min-w-[250px] relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input 
+            type="text"
+            placeholder="Buscar cliente o localidad..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+              <X className="w-4 h-4 text-slate-400 hover:text-slate-600" />
+            </button>
+          )}
         </div>
-
-        <span className="text-sm text-slate-500 ml-auto">
-          Mostrando {filteredClients.length} clientes
-        </span>
+        
+        <div className="text-xs text-slate-500 font-medium">
+          Mostrando {filteredClients.length} ubicaciones
+        </div>
       </div>
 
-      {/* Map Container */}
-      <div className="flex-grow rounded-xl overflow-hidden shadow-lg border border-slate-300 relative z-0">
-        <MapContainer center={MAP_CENTER} zoom={MAP_ZOOM} scrollWheelZoom={true} style={{ height: "100%", width: "100%" }}>
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          
-          {filteredClients.map((client) => (
-            <Marker 
-              key={client.id} 
-              position={[client.latitud, client.longitud]}
-              icon={customIcon}
-            >
-              <Popup>
-                <div className="min-w-[200px]">
-                  <h3 className="font-bold text-slate-800 text-lg mb-1">{client.nombreComercial}</h3>
-                  <div className="space-y-1 text-sm text-slate-600">
-                    <p className="flex items-center"><MapPin className="w-3 h-3 mr-1"/> {client.localidad}, {client.departamento}</p>
-                    {client.email && <p className="flex items-center"><Mail className="w-3 h-3 mr-1"/> {client.email}</p>}
-                    {client.telefono && <p className="flex items-center"><Phone className="w-3 h-3 mr-1"/> {client.telefono}</p>}
+      <div className="flex-1 rounded-xl overflow-hidden shadow-inner border border-slate-200 z-0">
+        <MapContainer center={MAP_CENTER} zoom={MAP_ZOOM} style={{ height: '100%', width: '100%' }}>
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          {filteredClients.map(client => {
+            // Conversión segura a número para Leaflet
+            const lat = parseFloat(client.latitud as any);
+            const lng = parseFloat(client.longitud as any);
+
+            if (isNaN(lat) || isNaN(lng)) return null;
+
+            return (
+              <Marker key={client.id} position={[lat, lng]} icon={customIcon}>
+                <Popup>
+                  <div className="p-1">
+                    <h3 className="font-bold text-blue-900 text-base">{client.nombreComercial}</h3>
+                    <p className="text-xs text-slate-500 mb-2">{client.localidad}, {client.departamento}</p>
+                    <div className="space-y-1">
+                       <button className="w-full bg-blue-600 text-white text-[10px] py-1 rounded mt-2">
+                         Ver Historial de Viajes
+                       </button>
+                    </div>
                   </div>
-                  <div className="mt-3 pt-3 border-t border-slate-100">
-                    <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Últimos Viajes</p>
-                    {trips.filter(t => t.clientId === client.id).slice(0, 2).map(trip => (
-                      <div key={trip.id} className="flex items-center text-xs mb-1">
-                        <Truck className="w-3 h-3 mr-1 text-blue-500"/>
-                        <span>{trip.fecha} - {trip.pesoKg/1000}t {trip.contenido}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+                </Popup>
+              </Marker>
+            );
+          })}
         </MapContainer>
       </div>
     </div>
