@@ -215,26 +215,41 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
         </table>
       </div>
 
-      {/* MODAL DE VISTA PREVIA PDF */}
+      {/* MODAL DE VISTA PREVIA PDF CORREGIDO */}
       {previewUrl && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
                   <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                      <h3 className="font-bold text-slate-800 flex items-center text-sm uppercase tracking-wider">
-                          <ExternalLink className="w-4 h-4 mr-2" /> Vista Previa de Factura Digital
-                      </h3>
-                      <button 
-                        onClick={() => setPreviewUrl(null)} 
-                        className="p-1.5 hover:bg-slate-200 rounded-full transition-colors text-slate-500"
-                      >
-                        <X className="w-6 h-6" />
-                      </button>
+                      <div>
+                        <h3 className="font-bold text-slate-800 flex items-center text-sm uppercase">
+                            <FileText className="w-4 h-4 mr-2 text-blue-600" /> Factura Digital
+                        </h3>
+                        <p className="text-[10px] text-slate-400 font-mono">{previewUrl.split('srcid=')[1]?.split('&')[0]}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a 
+                          href={previewUrl.replace('&embedded=true', '')} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 mr-1" /> Expandir
+                        </a>
+                        <button 
+                          onClick={() => setPreviewUrl(null)} 
+                          className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
+                        >
+                          <X className="w-6 h-6" />
+                        </button>
+                      </div>
                   </div>
-                  <div className="flex-1 bg-slate-200">
+                  <div className="flex-1 bg-slate-100 flex items-center justify-center relative">
+                      {/* El iframe con la URL de Google Viewer */}
                       <iframe 
                         src={previewUrl} 
-                        className="w-full h-full border-none" 
-                        title="Invoice Preview" 
+                        className="w-full h-full border-none shadow-inner" 
+                        allow="autoplay"
+                        title="Invoice Preview"
                       />
                   </div>
               </div>
