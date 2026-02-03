@@ -34,7 +34,6 @@ export const StrategicMap: React.FC<StrategicMapProps> = ({ clients, trips }) =>
   return (
     <div className="h-[calc(100vh-140px)] flex flex-col space-y-4">
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-center">
-        {/* Filtro Departamento */}
         <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
           <span className="text-slate-500 mr-2 text-sm font-medium">Depto:</span>
           <select 
@@ -47,12 +46,11 @@ export const StrategicMap: React.FC<StrategicMapProps> = ({ clients, trips }) =>
           </select>
         </div>
 
-        {/* Buscador de Cliente (Reemplaza al antiguo Select) */}
         <div className="flex-1 min-w-[250px] relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input 
             type="text"
-            placeholder="Buscar cliente o localidad..."
+            placeholder="Buscar cliente por nombre o localidad..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
@@ -63,20 +61,14 @@ export const StrategicMap: React.FC<StrategicMapProps> = ({ clients, trips }) =>
             </button>
           )}
         </div>
-        
-        <div className="text-xs text-slate-500 font-medium">
-          Mostrando {filteredClients.length} ubicaciones
-        </div>
       </div>
 
       <div className="flex-1 rounded-xl overflow-hidden shadow-inner border border-slate-200 z-0">
         <MapContainer center={MAP_CENTER} zoom={MAP_ZOOM} style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           {filteredClients.map(client => {
-            // Conversión segura a número para Leaflet
             const lat = parseFloat(client.latitud as any);
             const lng = parseFloat(client.longitud as any);
-
             if (isNaN(lat) || isNaN(lng)) return null;
 
             return (
@@ -85,10 +77,9 @@ export const StrategicMap: React.FC<StrategicMapProps> = ({ clients, trips }) =>
                   <div className="p-1">
                     <h3 className="font-bold text-blue-900 text-base">{client.nombreComercial}</h3>
                     <p className="text-xs text-slate-500 mb-2">{client.localidad}, {client.departamento}</p>
-                    <div className="space-y-1">
-                       <button className="w-full bg-blue-600 text-white text-[10px] py-1 rounded mt-2">
-                         Ver Historial de Viajes
-                       </button>
+                    <div className="space-y-1 text-xs">
+                      <p className="flex items-center"><Mail className="w-3 h-3 mr-1"/> {client.email}</p>
+                      <p className="flex items-center"><Phone className="w-3 h-3 mr-1"/> {client.telefono}</p>
                     </div>
                   </div>
                 </Popup>
