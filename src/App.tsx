@@ -34,7 +34,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Recuperar sesión al cargar
+    // 1. Recuperar sesión al cargar.
     const savedUser = localStorage.getItem('gdc_user_session');
     if (savedUser) {
       setUser(JSON.parse(savedUser));
