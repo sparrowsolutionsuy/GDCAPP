@@ -48,12 +48,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ trips, clients, user }) =>
     const inProgressTrips = filteredTrips.filter(t => t.estado === TripStatus.IN_PROGRESS);
     const finishedTrips = [...closedTrips, ...completedTrips];
     
-    // Revenue from CLOSED trips (Realized)
+    // Facturación USD
     const realizedRevenue = closedTrips.reduce((acc, curr) => acc + (curr.tarifa * (curr.pesoKg / 1000)), 0);
-    
-    // Revenue from COMPLETED trips (Pending)
     const pendingRevenue = completedTrips.reduce((acc, curr) => acc + (curr.tarifa * (curr.pesoKg / 1000)), 0);
     
+    // Facturación UYU Estimada (Nueva Lógica Multi-moneda)
+    const totalUYU = finishedTrips.reduce((acc, curr) => {
+        const tripUSD = curr.tarifa * (curr.pesoKg / 1000);
+        const rate = curr.tipoCambio || 42; // Fallback si es dato antiguo
+        return acc + (tripUSD * rate);
+    }, 0);
+
     const totalTripsCount = finishedTrips.length;
     const activeTripsCount = inProgressTrips.length;
     const totalKm = finishedTrips.reduce((acc, curr) => acc + curr.kmRecorridos, 0);
@@ -64,6 +69,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ trips, clients, user }) =>
       totalKm: totalKm.toLocaleString(),
       realizedRevenue: realizedRevenue,
       pendingRevenue: pendingRevenue,
+      totalUYU: totalUYU
     };
   }, [filteredTrips]);
 
@@ -84,26 +90,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ trips, clients, user }) =>
 
   // -- Product Performance Stats --
   const productPerformance = useMemo(() => {
-    const stats: Record<string, { revenue: number, count: number, efficiencySum: number, effCount: number }> = {};
+    const stats: Record<string, { revenue: number, count: number, revenueUYU: number }> = {};
     
     trips.filter(t => t.estado === TripStatus.COMPLETED || t.estado === TripStatus.CLOSED).forEach(t => {
-        if (!stats[t.contenido]) stats[t.contenido] = { revenue: 0, count: 0, efficiencySum: 0, effCount: 0 };
+        if (!stats[t.contenido]) stats[t.contenido] = { revenue: 0, count: 0, revenueUYU: 0 };
         
         const rev = t.tarifa * (t.pesoKg / 1000);
-        stats[t.contenido].revenue += rev;
-        stats[t.contenido].count++;
+        const rate = t.tipoCambio || 42;
         
-        if (t.kmRecorridos > 0) {
-            stats[t.contenido].efficiencySum += (rev / t.kmRecorridos);
-            stats[t.contenido].effCount++;
-        }
+        stats[t.contenido].revenue += rev;
+        stats[t.contenido].revenueUYU += (rev * rate);
+        stats[t.contenido].count++;
     });
 
     return Object.entries(stats).map(([name, data]) => ({
         name,
         revenue: data.revenue,
         count: data.count,
-        avgEfficiency: data.effCount > 0 ? data.efficiencySum / data.effCount : 0
+        revenueUYU: data.revenueUYU
     })).sort((a, b) => b.revenue - a.revenue);
   }, [trips]);
 
@@ -155,13 +159,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ trips, clients, user }) =>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Visible to All */}
         <KpiCard title="Viajes Finalizados" value={`${kpis.totalTrips}`} icon={<Truck className="w-6 h-6 text-blue-100" />} bg="bg-slate-700" />
-        <KpiCard title="Total KM (Recorridos)" value={`${kpis.totalKm}`} icon={<Map className="w-6 h-6 text-slate-100" />} bg="bg-slate-600" />
+        
+        {/* NUEVO KPI PESOS URUGUAYOS */}
+        {isAdmin ? (
+             <KpiCard title="Facturación Est. (UYU)" value={kpis.totalUYU.toLocaleString('es-UY', { style: 'currency', currency: 'UYU', maximumFractionDigits: 0 })} icon={<TrendingUp className="w-6 h-6 text-emerald-100" />} bg="bg-emerald-700" />
+        ) : (
+            <KpiCard title="Total KM (Recorridos)" value={`${kpis.totalKm}`} icon={<Map className="w-6 h-6 text-slate-100" />} bg="bg-slate-600" />
+        )}
         
         {/* Admin Only */}
         {isAdmin ? (
           <>
-            <KpiCard title="Facturación Cerrada" value={kpis.realizedRevenue.toLocaleString('es-UY', { style: 'currency', currency: 'USD' })} icon={<DollarSign className="w-6 h-6 text-green-100" />} bg="bg-blue-900" />
-            <KpiCard title="Pendiente Facturar" value={kpis.pendingRevenue.toLocaleString('es-UY', { style: 'currency', currency: 'USD' })} icon={<Clock className="w-6 h-6 text-yellow-100" />} bg="bg-orange-600" />
+            <KpiCard title="Facturación Cerrada" value={kpis.realizedRevenue.toLocaleString('es-UY', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} icon={<DollarSign className="w-6 h-6 text-green-100" />} bg="bg-blue-900" />
+            <KpiCard title="Pendiente Facturar" value={kpis.pendingRevenue.toLocaleString('es-UY', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} icon={<Clock className="w-6 h-6 text-yellow-100" />} bg="bg-orange-600" />
           </>
         ) : (
           <>
@@ -174,31 +184,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ trips, clients, user }) =>
         )}
       </div>
 
-      {/* Financial Health - Admin Only */}
-      {isAdmin && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-sm font-semibold text-slate-700">Estado de Cobranza (Real vs Potencial)</h3>
-            <span className="text-sm font-bold text-slate-800">{progressPercent.toFixed(1)}% Cobrado</span>
-          </div>
-          <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden relative">
-            <div 
-              className="bg-blue-600 h-4 rounded-full transition-all duration-1000 ease-out z-10 relative" 
-              style={{ width: `${progressPercent}%` }}
-            ></div>
-          </div>
-          <div className="flex justify-between text-xs text-slate-500 mt-2">
-            <span className="flex items-center"><div className="w-2 h-2 bg-blue-600 rounded-full mr-1"></div> Cerrado: {kpis.realizedRevenue.toLocaleString('es-UY', { style: 'currency', currency: 'USD' })}</span>
-            <span className="flex items-center">Pendiente: {kpis.pendingRevenue.toLocaleString('es-UY', { style: 'currency', currency: 'USD' })} <div className="w-2 h-2 bg-slate-200 rounded-full ml-1"></div></span>
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Monthly Revenue Chart - Admin Only */}
         {isAdmin ? (
           <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Evolución de Ingresos</h3>
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Evolución de Ingresos (USD)</h3>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={monthlyRevenue}>
@@ -213,7 +203,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ trips, clients, user }) =>
                   <YAxis hide />
                   <Tooltip 
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ingresos']}
+                    formatter={(value: number) => [`USD ${value.toLocaleString()}`, 'Ingresos']}
                   />
                   <Area type="monotone" dataKey="value" stroke="#2563eb" fillOpacity={1} fill="url(#colorRevenue)" />
                 </AreaChart>
@@ -242,27 +232,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ trips, clients, user }) =>
                     </div>
                     
                     {isAdmin && (
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                          <div>
-                              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Ganancia</p>
+                      <div className="grid grid-cols-1 gap-2 mt-2">
+                          <div className="flex justify-between">
+                              <p className="text-[10px] text-slate-400 uppercase tracking-wide">USD</p>
                               <p className="text-sm font-medium text-slate-800">${item.revenue.toLocaleString()}</p>
                           </div>
-                          <div className="text-right">
-                              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Eficiencia</p>
-                              <div className="flex items-center justify-end text-sm font-medium text-green-600">
-                                  <TrendingUp className="w-3 h-3 mr-1" />
-                                  ${item.avgEfficiency.toFixed(2)} /km
-                              </div>
+                          <div className="flex justify-between">
+                              <p className="text-[10px] text-slate-400 uppercase tracking-wide">UYU (Est)</p>
+                              <p className="text-sm font-medium text-emerald-600">${item.revenueUYU.toLocaleString('es-UY', {maximumFractionDigits: 0})}</p>
                           </div>
-                      </div>
-                    )}
-                    {/* Only show bar if admin, otherwise simple count */}
-                    {isAdmin && (
-                      <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2">
-                          <div 
-                              className="bg-blue-500 h-1.5 rounded-full" 
-                              style={{ width: `${(item.revenue / productPerformance[0].revenue) * 100}%` }} 
-                          />
                       </div>
                     )}
                 </div>
