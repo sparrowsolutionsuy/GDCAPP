@@ -20,23 +20,24 @@ export interface Client {
   localidad: string;
   latitud: number;
   longitud: number;
-  rut: string;      // Registro Único Tributario (12 digits)
+  rut: string;      
   email: string;
   telefono: string;
 }
 
 export interface Trip {
   id: string;
-  fecha: string; // ISO date string
+  fecha: string; 
   clientId: string;
   estado: TripStatus;
-  contenido: string; // Product (Soja, Maíz, etc.)
+  contenido: string; 
   pesoKg: number;
   kmRecorridos: number;
-  tarifa: number; // Price per Ton (USD/Ton)
+  tarifa: number; // USD por Tonelada
   origen: string;
   destino: string;
   facturaUrl?: string;
+  tipoCambio: number; // Cotización UYU del día
 }
 
 export interface KPIMetrics {
