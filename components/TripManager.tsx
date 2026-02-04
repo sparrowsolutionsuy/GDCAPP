@@ -3,7 +3,7 @@ import { Trip, TripStatus, Client, User } from '../src/types';
 import { saveTripToSheet, updateTripInSheet, deleteTripInSheet } from '../services/api';
 import { 
   Plus, Calendar, Package, ArrowRight, Search, Filter, Sparkles, 
-  Pencil, Trash2, X, RefreshCw, AlertCircle, FileText 
+  Pencil, Trash2, X, RefreshCw, AlertCircle, FileText, DollarSign 
 } from 'lucide-react';
 
 interface TripManagerProps {
@@ -21,7 +21,6 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
   const [suggestedKm, setSuggestedKm] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  // Estado Local para UI optimista
   const [localTrips, setLocalTrips] = useState<Trip[]>(trips);
   
   useEffect(() => { setLocalTrips(trips); }, [trips]);
@@ -43,10 +42,11 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
     pesoKg: 0,
     tarifa: 0,
     kmRecorridos: 0,
-    facturaUrl: '' // Importante para la validación
+    tipoCambio: 42.5, // Valor por defecto sugerido
+    facturaUrl: '' 
   });
 
-  // --- LÓGICA DE DISTANCIA INTELIGENTE ---
+  // Distancia Inteligente
   useEffect(() => {
     if (!editingId && newTrip.origen && newTrip.destino && showForm) {
       const origin = newTrip.origen.trim().toLowerCase();
@@ -65,13 +65,10 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
     }
   }, [newTrip.origen, newTrip.destino, showForm]);
 
-  // --- CRUD HANDLERS ---
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // Validación de seguridad final para estado Cerrado
     if (newTrip.estado === TripStatus.CLOSED && !newTrip.facturaUrl) {
         alert("No se puede cerrar el viaje sin una factura cargada.");
         setLoading(false);
@@ -84,6 +81,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
       pesoKg: Number(newTrip.pesoKg),
       kmRecorridos: Number(newTrip.kmRecorridos),
       tarifa: Number(newTrip.tarifa),
+      tipoCambio: Number(newTrip.tipoCambio || 42),
       clientId: newTrip.clientId 
     } as Trip;
 
@@ -117,7 +115,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
   };
 
   const handleEdit = (trip: Trip) => {
-    setNewTrip({ ...trip }); // Copia completa incluyendo facturaUrl
+    setNewTrip({ ...trip }); 
     setEditingId(trip.id);
     setShowForm(true);
   };
@@ -125,37 +123,31 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
   const closeForm = () => {
     setShowForm(false);
     setEditingId(null);
-    setNewTrip({ estado: TripStatus.PROGRAMMED, fecha: new Date().toISOString().split('T')[0] });
+    setNewTrip({ estado: TripStatus.PROGRAMMED, fecha: new Date().toISOString().split('T')[0], tipoCambio: 42.5 });
     setSuggestedKm(false);
-  };
-
-  // --- HELPERS VISUALES ---
-  
-  const calculateBenefitKm = (trip: Trip) => {
-    if (!trip.kmRecorridos || trip.kmRecorridos === 0) return "0.00";
-    const totalRevenue = trip.tarifa * (trip.pesoKg / 1000);
-    return (totalRevenue / trip.kmRecorridos).toFixed(2);
   };
 
   const getClientName = (id: string) => clients.find(c => c.id === id)?.nombreComercial || 'Cliente Desconocido';
 
+  // Lógica de cálculo de totales
+  const calculateTotalUSD = (t: Trip) => t.tarifa * (t.pesoKg / 1000);
+  const calculateTotalUYU = (t: Trip) => calculateTotalUSD(t) * (t.tipoCambio || 42);
+
   const filteredTrips = localTrips.filter(t => {
     if (activeTab === 'current' && t.estado !== TripStatus.IN_PROGRESS) return false;
     if (activeTab === 'programmed' && t.estado !== TripStatus.PROGRAMMED) return false;
-    
     if (filters.searchId && !t.id.toLowerCase().includes(filters.searchId.toLowerCase())) return false;
     if (filters.clientId && t.clientId !== filters.clientId) return false;
     if (filters.status && t.estado !== filters.status) return false;
     if (filters.startDate && t.fecha < filters.startDate) return false;
     if (filters.endDate && t.fecha > filters.endDate) return false;
-
     return true;
   });
 
   return (
     <div className="space-y-6 animate-fade-in font-sans text-slate-600">
       
-      {/* 1. HEADER & TABS */}
+      {/* HEADER & TABS */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="bg-slate-100 p-1 rounded-lg border border-slate-200 inline-flex">
           {[
@@ -184,7 +176,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
         )}
       </div>
 
-      {/* 2. FILTERS BAR (Visualmente limpia como la original) */}
+      {/* FILTERS BAR */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
           <Filter className="w-3 h-3 mr-1.5" /> Filtros Activos
@@ -230,18 +222,18 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
         </div>
       </div>
 
-      {/* 3. TABLE (Restauración visual exacta) */}
+      {/* TABLE - AHORA CON MULTIMONEDA */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left text-sm">
             <thead className="bg-slate-50/80 text-slate-600 font-bold text-xs uppercase border-b border-slate-200 tracking-wide">
               <tr>
                 <th className="p-4 w-32">ID / Fecha</th>
                 <th className="p-4 w-32">Estado</th>
-                <th className="p-4">Cliente / Carga</th>
-                <th className="p-4">Ruta</th>
-                <th className="p-4 text-right">Métricas</th>
-                <th className="p-4 text-right text-green-700">Beneficio/KM</th>
-                <th className="p-4 text-center w-24">Acciones</th>
+                <th className="p-4">Cliente / Ruta</th>
+                {isAdmin && <th className="p-4 text-right">Tarifa (USD)</th>}
+                {isAdmin && <th className="p-4 text-right text-blue-700">Total USD</th>}
+                {isAdmin && <th className="p-4 text-right text-green-700">Total UYU</th>}
+                {isAdmin && <th className="p-4 text-center w-24">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -255,7 +247,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
                     </div>
                   </td>
 
-                  {/* Estado (Badges originales) */}
+                  {/* Estado */}
                   <td className="p-4 align-top">
                     <span className={`
                         px-2.5 py-1 rounded-full text-[11px] font-bold border uppercase tracking-wide
@@ -268,47 +260,55 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
                     </span>
                   </td>
 
-                  {/* Cliente y Carga */}
+                  {/* Cliente y Ruta */}
                   <td className="p-4 align-top">
                     <div className="font-bold text-slate-800 text-sm mb-0.5">{getClientName(trip.clientId)}</div>
-                    <div className="text-xs text-slate-500 flex items-center">
+                    <div className="flex items-center text-xs text-slate-500 mb-1">
                         <Package className="w-3 h-3 mr-1 opacity-70" /> 
-                        <span className="font-medium">{(trip.pesoKg/1000).toFixed(1)} tons</span>
+                        <span className="font-medium">{(trip.pesoKg/1000).toFixed(1)}t</span>
                         <span className="mx-1.5 text-slate-300">|</span>
                         {trip.contenido}
                     </div>
-                  </td>
-
-                  {/* Ruta */}
-                  <td className="p-4 align-top">
-                    <div className="flex items-center text-xs font-semibold text-slate-700 mb-1">
+                    <div className="flex items-center text-xs font-semibold text-slate-700">
                         {trip.origen} <ArrowRight className="w-3 h-3 mx-2 text-slate-300"/> {trip.destino}
                     </div>
-                    <div className="text-xs text-slate-400 font-medium bg-slate-50 px-2 py-0.5 rounded inline-block">
-                        {trip.kmRecorridos} km
-                    </div>
                   </td>
 
-                  {/* Métricas (Derecha) */}
-                  <td className="p-4 align-top text-right">
-                    <div className="text-xs font-medium text-slate-500">USD {trip.tarifa} / ton</div>
-                    <div className="text-sm font-bold text-slate-800 mt-0.5">
-                        USD {Math.round(trip.tarifa * (trip.pesoKg/1000)).toLocaleString()}
-                    </div>
-                  </td>
+                  {/* Tarifa (USD/Ton) */}
+                  {isAdmin && (
+                    <td className="p-4 align-top text-right">
+                      <div className="text-xs font-medium text-slate-500">
+                        USD {trip.tarifa} <span className="text-[10px]">/ton</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1">
+                        Cotiz: ${trip.tipoCambio || 42}
+                      </div>
+                    </td>
+                  )}
 
-                  {/* KPI (Derecha) */}
-                  <td className="p-4 align-top text-right">
-                     <span className="bg-green-50 text-green-700 px-2 py-1 rounded-md text-xs font-bold border border-green-100">
-                        ${calculateBenefitKm(trip)} /km
-                     </span>
-                  </td>
+                  {/* TOTAL USD */}
+                  {isAdmin && (
+                    <td className="p-4 align-top text-right">
+                       <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-sm font-bold border border-blue-100">
+                          USD {Math.round(calculateTotalUSD(trip)).toLocaleString()}
+                       </span>
+                    </td>
+                  )}
+                  
+                  {/* TOTAL UYU */}
+                  {isAdmin && (
+                    <td className="p-4 align-top text-right">
+                       <span className="bg-green-50 text-green-700 px-2 py-1 rounded-md text-sm font-bold border border-green-100">
+                          $ {Math.round(calculateTotalUYU(trip)).toLocaleString('es-UY')}
+                       </span>
+                    </td>
+                  )}
 
                   {/* Acciones */}
                   <td className="p-4 align-top text-center">
                     {isAdmin && (
                         <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleEdit(trip)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md" title="Editar Estado y Datos"><Pencil className="w-4 h-4"/></button>
+                            <button onClick={() => handleEdit(trip)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md" title="Editar"><Pencil className="w-4 h-4"/></button>
                             <button onClick={() => handleDelete(trip.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-md" title="Eliminar"><Trash2 className="w-4 h-4"/></button>
                         </div>
                     )}
@@ -319,7 +319,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
         </table>
       </div>
 
-      {/* 4. MODAL DE EDICIÓN (Con Lógica de Estado Protegido) */}
+      {/* MODAL DE EDICIÓN */}
       {showForm && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
@@ -334,7 +334,7 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
             <form onSubmit={handleSave} className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
                     
-                    {/* SECCIÓN 1: ESTADO DEL VIAJE (CRÍTICA) */}
+                    {/* SECCIÓN ESTADO */}
                     <div className="col-span-2 bg-blue-50/50 p-4 rounded-lg border border-blue-100 flex items-start gap-4">
                         <div className="flex-1">
                             <label className="block text-xs font-bold text-blue-800 uppercase mb-2">Estado Actual</label>
@@ -343,38 +343,17 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
                                 value={newTrip.estado} 
                                 onChange={e => setNewTrip({...newTrip, estado: e.target.value as TripStatus})}
                             >
-                                <option value={TripStatus.PROGRAMMED}>Programado (Pendiente de inicio)</option>
-                                <option value={TripStatus.IN_PROGRESS}>En Curso (En tránsito)</option>
-                                <option value={TripStatus.COMPLETED}>Finalizado (Entregado)</option>
-                                
-                                {/* LOGICA DE BLOQUEO AQUÍ */}
-                                <option 
-                                    value={TripStatus.CLOSED} 
-                                    disabled={!newTrip.facturaUrl}
-                                    className={!newTrip.facturaUrl ? "text-slate-300 italic" : "text-slate-700 font-bold"}
-                                >
-                                    {newTrip.facturaUrl 
-                                        ? "🔒 Cerrado (Factura Verificada)" 
-                                        : "🚫 Cerrado (Requiere cargar factura en módulo Facturación)"}
+                                <option value={TripStatus.PROGRAMMED}>Programado</option>
+                                <option value={TripStatus.IN_PROGRESS}>En Curso</option>
+                                <option value={TripStatus.COMPLETED}>Finalizado</option>
+                                <option value={TripStatus.CLOSED} disabled={!newTrip.facturaUrl}>
+                                    {newTrip.facturaUrl ? "🔒 Cerrado (Factura OK)" : "🚫 Cerrado (Requiere Factura)"}
                                 </option>
                             </select>
-                            
-                            {!newTrip.facturaUrl && (
-                                <div className="flex items-center mt-2 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
-                                    <AlertCircle className="w-3 h-3 mr-1.5" />
-                                    <span>Para cerrar el viaje, primero cargue la factura en la sección "Facturación".</span>
-                                </div>
-                            )}
-                             {newTrip.facturaUrl && (
-                                <div className="flex items-center mt-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">
-                                    <FileText className="w-3 h-3 mr-1.5" />
-                                    <span>Factura vinculada correctamente.</span>
-                                </div>
-                            )}
                         </div>
                     </div>
 
-                    {/* RESTO DE CAMPOS */}
+                    {/* CAMPOS BASICOS */}
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cliente</label>
                         <select required className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.clientId || ''} onChange={e => setNewTrip({...newTrip, clientId: e.target.value})}>
@@ -387,19 +366,10 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
                         <input type="date" required className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.fecha} onChange={e => setNewTrip({...newTrip, fecha: e.target.value})} />
                     </div>
                     
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Origen</label>
-                        <input type="text" className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.origen} onChange={e => setNewTrip({...newTrip, origen: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Destino</label>
-                        <input type="text" className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.destino} onChange={e => setNewTrip({...newTrip, destino: e.target.value})} />
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Producto</label>
-                        <input type="text" className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" placeholder="Ej: Soja" value={newTrip.contenido} onChange={e => setNewTrip({...newTrip, contenido: e.target.value})} />
-                    </div>
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Origen</label><input type="text" className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.origen} onChange={e => setNewTrip({...newTrip, origen: e.target.value})} /></div>
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Destino</label><input type="text" className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.destino} onChange={e => setNewTrip({...newTrip, destino: e.target.value})} /></div>
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Producto</label><input type="text" className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.contenido} onChange={e => setNewTrip({...newTrip, contenido: e.target.value})} /></div>
+                    
                     <div>
                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex justify-between">
                             <span>KM Recorridos</span>
@@ -408,13 +378,20 @@ export const TripManager: React.FC<TripManagerProps> = ({ trips, clients, onAddT
                         <input type="number" className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.kmRecorridos || ''} onChange={e => {setNewTrip({...newTrip, kmRecorridos: Number(e.target.value)}); setSuggestedKm(false);}} />
                     </div>
 
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Peso (KG)</label>
-                        <input type="number" className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.pesoKg || ''} onChange={e => setNewTrip({...newTrip, pesoKg: Number(e.target.value)})} />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tarifa (USD/Ton)</label>
-                        <input type="number" className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm" value={newTrip.tarifa || ''} onChange={e => setNewTrip({...newTrip, tarifa: Number(e.target.value)})} />
+                    {/* SECCIÓN ECONÓMICA MULTIMONEDA */}
+                    <div className="col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 bg-emerald-50/50 p-3 rounded-lg border border-emerald-100 mt-2">
+                         <div>
+                            <label className="block text-xs font-bold text-emerald-800 uppercase mb-1">Peso (KG)</label>
+                            <input type="number" className="w-full p-2.5 bg-white border border-emerald-200 rounded-lg text-sm" value={newTrip.pesoKg || ''} onChange={e => setNewTrip({...newTrip, pesoKg: Number(e.target.value)})} />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-emerald-800 uppercase mb-1">Tarifa (USD/Ton)</label>
+                            <input type="number" className="w-full p-2.5 bg-white border border-emerald-200 rounded-lg text-sm" value={newTrip.tarifa || ''} onChange={e => setNewTrip({...newTrip, tarifa: Number(e.target.value)})} />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-emerald-800 uppercase mb-1 flex items-center"><DollarSign className="w-3 h-3 mr-1"/>Cotización (UYU)</label>
+                            <input type="number" step="0.01" className="w-full p-2.5 bg-white border border-emerald-200 rounded-lg text-sm font-bold" value={newTrip.tipoCambio || ''} onChange={e => setNewTrip({...newTrip, tipoCambio: Number(e.target.value)})} />
+                        </div>
                     </div>
                 </div>
 
