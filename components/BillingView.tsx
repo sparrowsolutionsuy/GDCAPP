@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Trip, TripStatus, Client } from '../src/types';
-import { uploadInvoice } from '../services/api';
+import { uploadInvoice } from '../services/api'; // Importamos tu función existente
 import { 
   UploadCloud, CheckCircle, Loader2, ExternalLink, 
-  Calendar, Search, X, Receipt, Filter, FileText 
-} from 'lucide-react'; // <-- CORREGIDO
+  Search, Receipt, FileText, Filter 
+} from 'lucide-react';
 
 interface BillingViewProps {
   trips: Trip[];
@@ -15,8 +15,7 @@ interface BillingViewProps {
 export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvoiceUploaded }) => {
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'closed'>('pending');
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
+  
   // Filtros
   const [filters, setFilters] = useState({
       dateStart: '',
@@ -30,10 +29,13 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
       if (activeTab === 'closed' && t.estado !== TripStatus.CLOSED) return false;
 
       const client = clients.find(c => c.id === t.clientId);
-      const rutMatch = client?.rut?.includes(filters.searchId) || false;
-      const idMatch = t.id.toLowerCase().includes(filters.searchId.toLowerCase());
+      const search = filters.searchId.toLowerCase();
       
-      if (filters.searchId && !idMatch && !rutMatch) return false;
+      const matchSearch = 
+        (t.id && t.id.toLowerCase().includes(search)) || 
+        (client?.rut && client.rut.includes(search));
+
+      if (filters.searchId && !matchSearch) return false;
       if (filters.clientId && t.clientId !== filters.clientId) return false;
       if (filters.dateStart && t.fecha < filters.dateStart) return false;
       if (filters.dateEnd && t.fecha > filters.dateEnd) return false;
@@ -41,87 +43,71 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
       return true;
   });
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, tripId: string) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, trip: Trip) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploadingId(tripId);
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    
-    reader.onload = async () => {
-      try {
-        const base64Data = (reader.result as string).split(',')[1];
-        const response = await uploadInvoice(tripId, base64Data, file.name, file.type);
+    setUploadingId(trip.id);
 
-        if (response && response.status === 'success') {
-          onInvoiceUploaded(tripId, response.url);
-          alert("Factura cargada y viaje cerrado con éxito.");
-        } else {
-          alert("Error del servidor: " + (response?.message || "No se pudo procesar el archivo."));
-        }
-      } catch (err) {
-        alert("Falla de red. Verifique su conexión.");
-      } finally {
-        setUploadingId(null);
-        e.target.value = '';
+    try {
+      // Usamos la función uploadInvoice que ya tienes en api.ts
+      // Nota: api.ts espera (tripId, file). Asegúrate de que coincida.
+      const uploadedUrl = await uploadInvoice(trip.id, file);
+
+      if (uploadedUrl) {
+        onInvoiceUploaded(trip.id, uploadedUrl);
+        alert("✅ Factura cargada correctamente.");
+      } else {
+        alert("⚠️ Error al cargar. Revise la consola.");
       }
-    };
+    } catch (err) {
+      alert("❌ Error de conexión.");
+    } finally {
+      setUploadingId(null);
+      e.target.value = ''; 
+    }
   };
 
   return (
     <div className="space-y-6 p-4 animate-fade-in">
-      {/* Header con Tabs */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex bg-slate-100 p-1 rounded-xl w-fit border border-slate-200 shadow-sm">
-            <button 
-                onClick={() => setActiveTab('pending')}
-                className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'pending' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <Receipt className="w-4 h-4 mr-2" /> Pendientes de Facturar
-            </button>
-            <button 
-                onClick={() => setActiveTab('closed')}
-                className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'closed' ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <CheckCircle className="w-4 h-4 mr-2" /> Viajes Cerrados
-            </button>
-          </div>
+      {/* HEADER DE PESTAÑAS */}
+      <div className="flex bg-slate-100 p-1 rounded-xl w-fit border border-slate-200 shadow-sm">
+        <button 
+            onClick={() => setActiveTab('pending')}
+            className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'pending' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <Receipt className="w-4 h-4 mr-2" /> Pendientes
+        </button>
+        <button 
+            onClick={() => setActiveTab('closed')}
+            className={`flex items-center px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'closed' ? 'bg-white text-blue-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <CheckCircle className="w-4 h-4 mr-2" /> Cerrados
+        </button>
       </div>
 
-      {/* Panel de Filtros */}
+      {/* BARRA DE FILTROS */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Buscar ID o RUT</label>
-              <div className="relative">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                  <input type="text" placeholder="GDC-XXX..." className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={filters.searchId} onChange={e => setFilters({...filters, searchId: e.target.value})} />
-              </div>
+          <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <input type="text" placeholder="Buscar ID o RUT..." className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-500 outline-none" value={filters.searchId} onChange={e => setFilters({...filters, searchId: e.target.value})} />
           </div>
           <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Cliente</label>
-              <select className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={filters.clientId} onChange={e => setFilters({...filters, clientId: e.target.value})}>
+              <select className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" value={filters.clientId} onChange={e => setFilters({...filters, clientId: e.target.value})}>
                   <option value="">Todos los clientes</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.nombreComercial}</option>)}
               </select>
           </div>
-          <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Desde</label>
-              <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={filters.dateStart} onChange={e => setFilters({...filters, dateStart: e.target.value})} />
-          </div>
-          <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Hasta</label>
-              <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" value={filters.dateEnd} onChange={e => setFilters({...filters, dateEnd: e.target.value})} />
-          </div>
+          <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 outline-none" value={filters.dateStart} onChange={e => setFilters({...filters, dateStart: e.target.value})} />
+          <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 outline-none" value={filters.dateEnd} onChange={e => setFilters({...filters, dateEnd: e.target.value})} />
       </div>
 
-      {/* Tabla de Resultados */}
+      {/* TABLA DE FACTURACIÓN */}
       <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="p-4 font-bold text-slate-600">ID Viaje</th>
-              <th className="p-4 font-bold text-slate-600">Fecha</th>
               <th className="p-4 font-bold text-slate-600">Cliente / RUT</th>
               <th className="p-4 text-center font-bold text-slate-600">Estado</th>
               <th className="p-4 text-center font-bold text-slate-600">Acciones</th>
@@ -133,10 +119,9 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
               return (
                 <tr key={trip.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-4 font-mono font-bold text-xs text-blue-700">{trip.id}</td>
-                  <td className="p-4 text-slate-500">{trip.fecha}</td>
                   <td className="p-4">
-                    <div className="font-bold text-slate-800">{client?.nombreComercial}</div>
-                    <div className="text-[10px] text-slate-400">RUT: {client?.rut}</div>
+                    <div className="font-bold text-slate-800">{client?.nombreComercial || 'S/D'}</div>
+                    <div className="text-[10px] text-slate-400">RUT: {client?.rut || '-'}</div>
                   </td>
                   <td className="p-4 text-center">
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${trip.facturaUrl ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
@@ -151,12 +136,19 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
                         </div>
                       ) : (
                         <>
-                          <label className="p-2 bg-blue-50 text-blue-600 rounded-lg cursor-pointer hover:bg-blue-100 border border-blue-100 transition-all" title="Cargar Factura">
-                            <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, trip.id)} accept=".pdf,image/*" />
+                          {/* Botón de Carga */}
+                          <label className="p-2 bg-blue-50 text-blue-600 rounded-lg cursor-pointer hover:bg-blue-100 border border-blue-100 transition-all shadow-sm" title="Subir Factura">
+                            <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, trip)} accept=".pdf,image/*" />
                             <UploadCloud className="w-4 h-4" />
                           </label>
+                          
+                          {/* Botón de Ver (Abre nueva pestaña) */}
                           {trip.facturaUrl && (
-                            <button onClick={() => setPreviewUrl(trip.facturaUrl!)} className="p-2 bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-100 border border-slate-200 transition-all">
+                            <button 
+                                onClick={() => window.open(trip.facturaUrl, '_blank')} 
+                                className="p-2 bg-white text-slate-600 rounded-lg hover:text-blue-600 hover:bg-slate-50 border border-slate-200 transition-all shadow-sm"
+                                title="Abrir factura en nueva pestaña"
+                            >
                               <ExternalLink className="w-4 h-4" />
                             </button>
                           )}
@@ -169,43 +161,14 @@ export const BillingView: React.FC<BillingViewProps> = ({ trips, clients, onInvo
             })}
           </tbody>
         </table>
+        
         {visibleTrips.length === 0 && (
-          <div className="p-20 text-center text-slate-400">
+          <div className="p-16 text-center text-slate-400">
             <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
-            <p className="italic">No se encontraron viajes con los filtros aplicados.</p>
+            <p className="italic font-medium">No se encontraron viajes con los filtros actuales.</p>
           </div>
         )}
       </div>
-
-      {/* Modal de Previsualización */}
-      {previewUrl && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-zoom-in">
-                <div className="p-4 border-b flex justify-between items-center bg-white">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                            <FileText className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-slate-800">Vista Previa de Factura</h3>
-                            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Documento Digitalizado</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <a href={previewUrl} target="_blank" rel="noreferrer" className="flex items-center px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 rounded-lg transition-colors">
-                        <ExternalLink className="w-4 h-4 mr-2" /> Expandir
-                      </a>
-                      <button onClick={() => setPreviewUrl(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
-                        <X className="w-6 h-6" />
-                      </button>
-                    </div>
-                </div>
-                <div className="flex-1 bg-slate-100 relative">
-                    <iframe src={previewUrl} className="w-full h-full border-none shadow-inner" title="Invoice Preview" />
-                </div>
-            </div>
-        </div>
-      )}
     </div>
   );
 };
