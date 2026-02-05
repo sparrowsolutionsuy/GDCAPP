@@ -1,14 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet';
+import React, { useState, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
 import { Client, Trip } from '../src/types';
 import { DEPARTAMENTOS } from '../src/constants';
-import { Search, MapPin, Truck, Phone, X, Info, Mail, Hash, Navigation } from 'lucide-react';
+import { Search, MapPin, Truck, Phone, X, Navigation } from 'lucide-react';
 
-// Importación obligatoria del CSS de Leaflet
+// IMPORTANTE: Sin esta importación el mapa se ve desordenado
 import 'leaflet/dist/leaflet.css';
 
-// Configuración de Icono Personalizado (Solución definitiva para iconos rotos)
+// Solución para iconos: Leaflet pierde las rutas de los iconos en el build de Vite
 const customIcon = new L.Icon({
   iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
   iconSize: [35, 35],
@@ -18,55 +18,53 @@ const customIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// Valores por defecto en caso de que las constantes no carguen
-const DEFAULT_CENTER: [number, number] = [-32.5228, -55.7658]; // Centro de Uruguay
-const DEFAULT_ZOOM = 7;
-
 export const StrategicMap: React.FC<{ clients: Client[]; trips: Trip[] }> = ({ clients, trips }) => {
   const [selectedDept, setSelectedDept] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 1. Filtrado ultra-seguro
+  // FILTRADO SEGURO: Evita el crash si los datos vienen mal de la planilla
   const filteredClients = useMemo(() => {
-    if (!Array.isArray(clients)) return [];
+    if (!clients || !Array.isArray(clients)) return [];
 
     return clients.filter(c => {
-      if (!c) return false;
-
-      // Limpieza de coordenadas (soporta string con coma, punto o números directos)
-      const lat = parseFloat(String(c.latitud || '').replace(',', '.'));
-      const lng = parseFloat(String(c.longitud || '').replace(',', '.'));
+      // 1. Limpieza de coordenadas (convierte " -34,123 " en -34.123)
+      const latRaw = String(c?.latitud || '').trim().replace(',', '.');
+      const lngRaw = String(c?.longitud || '').trim().replace(',', '.');
       
-      // Solo mostramos si tiene coordenadas válidas en Uruguay (aprox)
+      const lat = parseFloat(latRaw);
+      const lng = parseFloat(lngRaw);
+
+      // 2. Validación: Solo incluimos si tiene coordenadas reales dentro del área de Uruguay
       const hasValidCoords = !isNaN(lat) && !isNaN(lng) && lat < -30 && lat > -36;
 
-      const name = (c.nombreComercial || '').toLowerCase();
-      const rut = (c.rut || '').toLowerCase();
+      // 3. Filtros de búsqueda y departamento
       const search = searchTerm.toLowerCase();
+      const matchesSearch = 
+        (c?.nombreComercial || '').toLowerCase().includes(search) || 
+        (c?.rut || '').includes(search);
       
-      const matchesSearch = name.includes(search) || rut.includes(search);
-      const matchesDept = selectedDept === 'Todos' || c.departamento === selectedDept;
+      const matchesDept = selectedDept === 'Todos' || c?.departamento === selectedDept;
 
       return hasValidCoords && matchesSearch && matchesDept;
     });
   }, [clients, selectedDept, searchTerm]);
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-col space-y-4 animate-fade-in font-sans">
+    <div className="h-[calc(100vh-140px)] flex flex-col space-y-4 font-sans animate-fade-in">
       
-      {/* BARRA DE BUSQUEDA Y FILTROS */}
+      {/* BARRA DE HERRAMIENTAS */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-center z-10">
         <div className="flex items-center gap-3 pr-4 border-r border-slate-100">
-            <div className="bg-blue-900 p-2 rounded-lg">
-                <Navigation className="text-white w-5 h-5" />
+            <div className="bg-blue-900 p-2 rounded-lg text-white">
+                <Navigation className="w-5 h-5" />
             </div>
-            <h2 className="font-extrabold text-slate-800 hidden sm:block">Logística Estratégica</h2>
+            <h2 className="font-bold text-slate-800 hidden sm:block">Monitor de Clientes</h2>
         </div>
         
         <select 
             value={selectedDept} 
             onChange={(e) => setSelectedDept(e.target.value)} 
-            className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none hover:border-blue-400 transition-all cursor-pointer"
+            className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none hover:border-blue-500 cursor-pointer"
         >
             <option value="Todos">Todo Uruguay</option>
             {DEPARTAMENTOS.map(d => <option key={d} value={d}>{d}</option>)}
@@ -76,8 +74,8 @@ export const StrategicMap: React.FC<{ clients: Client[]; trips: Trip[] }> = ({ c
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input 
             type="text" 
-            placeholder="Buscar por cliente o RUT..." 
-            className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+            placeholder="Buscar por RUT o Cliente..." 
+            className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -90,27 +88,28 @@ export const StrategicMap: React.FC<{ clients: Client[]; trips: Trip[] }> = ({ c
         
         <div className="bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
             <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
-            <span className="text-xs font-bold text-blue-800">{filteredClients.length} Clientes</span>
+            <span className="text-xs font-bold text-blue-800">{filteredClients.length} Puntos</span>
         </div>
       </div>
 
-      {/* MAPA PRINCIPAL */}
+      {/* CONTENEDOR DEL MAPA */}
       <div className="flex-1 rounded-3xl overflow-hidden border border-slate-200 shadow-xl bg-slate-100 relative z-0">
         <MapContainer 
-            center={DEFAULT_CENTER} 
-            zoom={DEFAULT_ZOOM} 
+            center={[-32.5228, -55.7658]} 
+            zoom={7} 
             zoomControl={false}
             style={{ height: '100%', width: '100%' }}
         >
           <ZoomControl position="bottomright" />
-          {/* TileLayer de alto rendimiento (OSM HOT) */}
+          
+          {/* TileLayer de alto rendimiento */}
           <TileLayer 
-            url="https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png" 
-            attribution='&copy; OpenStreetMap contributors'
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" 
+            attribution='&copy; GDC Logistics'
           />
           
           {filteredClients.map(client => {
-             // Parseo seguro dentro del loop
+             // Parseo local seguro para el marcador
              const lat = parseFloat(String(client.latitud).replace(',', '.'));
              const lng = parseFloat(String(client.longitud).replace(',', '.'));
              const clientTrips = trips.filter(t => t.clientId === client.id);
@@ -121,13 +120,13 @@ export const StrategicMap: React.FC<{ clients: Client[]; trips: Trip[] }> = ({ c
                   position={[lat, lng]} 
                   icon={customIcon}
                 >
-                  <Popup maxWidth={300} minWidth={250}>
+                  <Popup minWidth={260}>
                     <div className="p-1 font-sans">
                       <div className="flex justify-between items-start mb-2">
                         <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                           {client.id}
+                           ID: {client.id}
                         </span>
-                        <p className="text-[10px] font-mono text-slate-400">{client.rut}</p>
+                        <p className="text-[10px] font-mono text-slate-400">RUT: {client.rut}</p>
                       </div>
 
                       <h3 className="font-extrabold text-slate-900 text-base leading-tight mb-2">
@@ -145,12 +144,12 @@ export const StrategicMap: React.FC<{ clients: Client[]; trips: Trip[] }> = ({ c
                         </div>
                       </div>
 
-                      <div className="bg-white border border-blue-100 p-2 rounded-lg flex items-center justify-between">
+                      <div className="bg-blue-900 text-white p-2 rounded-lg flex items-center justify-between">
                           <div className="flex items-center">
-                              <Truck className="w-4 h-4 mr-2 text-blue-600"/>
-                              <span className="text-xs font-bold text-slate-700">Viajes Totales</span>
+                              <Truck className="w-4 h-4 mr-2 text-blue-300"/>
+                              <span className="text-xs font-bold">Viajes Registrados</span>
                           </div>
-                          <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full font-black">
+                          <span className="bg-white/20 px-2 py-0.5 rounded text-xs font-black">
                               {clientTrips.length}
                           </span>
                       </div>
